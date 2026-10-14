@@ -22,7 +22,8 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [ ] Actual sharp-frame selection and perceptual quality calibration
 - [x] Flat filename-based multi-file glTF/BIN/textures and OBJ/MTL/textures import and ZIP dependency persistence
 - [ ] Nested path collisions, complex material fidelity and glTF asset validation
-- [ ] Project library with multiple saved projects
+- [x] Local multi-project library (12 named IndexedDB snapshots; separate autosave slot)
+- [ ] Project quotas, deduplication and storage-usage view
 - [ ] Point-cloud tools (crop, align, measure and cleanup)
 
 ## M3 — Real reconstruction (separate optional compute engine)

@@ -1,7 +1,7 @@
 import { Studio3D,MODEL_EXTENSIONS } from './scene.js';
 import { inspectPhoto,isPhoto,formatSize,photoIssues } from './photos.js';
 import { videoFrames,captureCameraFrame } from './capture.js';
-import { saveLocal,loadLocal,exportProjectZip,importProjectZip,download,safeFilename } from './storage.js';
+import { saveLocal,loadLocal,exportProjectZip,importProjectZip,download,safeFilename,listNamedProjects,saveNamedProject,loadNamedProject,deleteNamedProject } from './storage.js';
 const $=id=>document.getElementById(id);
 const icons=()=>window.lucide?.createIcons();
 const uid=()=>crypto.randomUUID?.()||'p'+Date.now()+Math.random().toString(36).slice(2);
@@ -25,7 +25,7 @@ async function restoreSnapshot(snapshot,notify=false){
 }
 async function undo(){if(!state.history.length||state.busy)return;const prev=state.history.pop();state.redo.push(capture());await restoreSnapshot(prev)}
 async function redo(){if(!state.redo.length||state.busy)return;const next=state.redo.pop();state.history.push(capture());await restoreSnapshot(next)}
-function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline'])$(id).disabled=b;}
+function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn'])$(id).disabled=b;}
 function renderAll(){renderScene();renderPhotos();renderInspector();renderMode()}
 function renderScene(){
   const list=$('object-list');list.replaceChildren();
@@ -168,6 +168,40 @@ async function doExport(format){if(state.busy)return;$('export-dialog').close();
   toast('Файл подготовлен к скачиванию','success');
 }catch(error){toast('Ошибка экспорта: '+error.message,'error')}finally{setBusy(false)}}
 async function restoreFromZip(file){if(!file)return;setBusy(true);try{const data=await importProjectZip(file);commitHistory();await restoreSnapshot(data,true)}catch(error){toast('Не удалось открыть проект: '+error.message,'error')}finally{setBusy(false);$('project-file').value=''}}
+async function renderLibrary(){
+ const list=$('library-list');list.replaceChildren();
+ try{
+   const projects=await listNamedProjects();
+   if(!projects.length){const empty=document.createElement('p');empty.className='quality-note';empty.textContent='Именованных копий пока нет. Сохраните текущий проект, чтобы он появился здесь.';list.append(empty);return}
+   for(const item of projects){
+     const row=document.createElement('div');row.className='library-entry';
+     const info=document.createElement('div');info.className='library-entry-info';
+     const name=document.createElement('strong');name.textContent=item.name;name.title=item.name;
+     const meta=document.createElement('small');meta.textContent=new Date(item.savedAt).toLocaleString('ru-RU')+' · '+item.objects+' объектов · '+item.photos+' фото';
+     info.append(name,meta);row.append(info);
+     const open=document.createElement('button');open.type='button';open.className='btn btn-outline';open.innerHTML='<i data-lucide="folder-open"></i> Открыть';
+     open.onclick=async()=>{
+       if(state.busy||!confirm('Открыть «'+item.name+'»? Текущий проект будет заменён, автосохранение обновится.'))return;
+       setBusy(true);try{
+         const snapshot=await loadNamedProject(item.id);if(!snapshot)throw Error('Проект не найден');
+         commitHistory();await restoreSnapshot(snapshot,true);$('library-dialog').close();
+       }catch(error){toast('Не удалось открыть копию: '+error.message,'error')}finally{setBusy(false)}
+     };
+     const remove=document.createElement('button');remove.type='button';remove.className='icon-btn library-remove';remove.title='Удалить копию';remove.setAttribute('aria-label','Удалить '+item.name);remove.innerHTML='<i data-lucide="trash-2"></i>';
+     remove.onclick=async()=>{
+       if(state.busy||!confirm('Удалить локальную копию «'+item.name+'» без возможности восстановления?'))return;
+       setBusy(true);try{await deleteNamedProject(item.id);await renderLibrary();toast('Копия удалена','success')}catch(error){toast(error.message,'error')}finally{setBusy(false)}
+     };
+     row.append(open,remove);list.append(row);
+   }
+   icons();
+ }catch(error){const note=document.createElement('p');note.className='quality-note';note.textContent='Не удалось загрузить библиотеку: '+error.message;list.append(note)}
+}
+async function saveLibraryCopy(){
+ if(state.busy)return;setBusy(true);
+ try{const saved=await saveNamedProject(project());await renderLibrary();toast('Сохранена копия «'+saved.name+'»','success')}
+ catch(error){toast('Ошибка сохранения: '+error.message,'error')}finally{setBusy(false)}
+}
 function confirmReset(){if(!confirm('Очистить текущую сцену и фотосет? Сначала сохраните ZIP, если нужна резервная копия.'))return;commitHistory();state.loading=true;engine.clear();clearPhotos();state.name='Untitled scan';$('project-name').value=state.name;state.loading=false;setMode('object');renderAll();queueSave()}
 function removeObject(){if(!engine.selectedId)return;commitHistory();engine.remove(engine.selectedId);renderInspector();queueSave()}
 function demo(){state.loading=true;const knot=engine.addPrimitive('knot',{name:'Demo / Sculpted form',silent:true});engine.applyTransform(knot.id,{position:[0,.18,0],rotation:[.3,.2,0],scale:[1,1,1]},false);const base=engine.addPrimitive('cylinder',{name:'Demo / Pedestal',silent:true});engine.applyTransform(base.id,{position:[0,-1.06,0],rotation:[0,0,0],scale:[1.55,.13,1.55]},false);engine.select(knot.id);engine.frame();state.loading=false;renderAll()}
@@ -191,6 +225,9 @@ function bind(){
   $('model-folder').onchange=async e=>{await addModels(e.target.files);e.target.value=''};
   $('photo-file').onchange=async e=>{await addPhotos(e.target.files);e.target.value=''};
   $('project-file').onchange=e=>restoreFromZip(e.target.files[0]);
+  $('library-btn').onclick=()=>{$('library-dialog').showModal();renderLibrary()};
+  $('library-close-btn').onclick=()=>$('library-dialog').close();
+  $('library-save-btn').onclick=saveLibraryCopy;
   $('video-import-btn').onclick=()=>$('video-file').click();
   $('video-file').onchange=e=>importVideo(e.target.files[0]);
   $('capture-cancel-btn').onclick=()=>videoController?.abort();

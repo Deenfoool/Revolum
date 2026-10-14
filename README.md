@@ -20,7 +20,7 @@ Run a static server in this repository (ES modules need HTTP): `python3 -m http.
 
 ## Formats
 
-Imports: GLB, glTF (+ matching BIN/textures), OBJ (+ matching MTL/textures), STL, PLY (mesh or point cloud). Select related files together, or use Import model folder. Linked files are matched by filename; filenames must be unique within a model import. Exports: GLB (materials where supported), OBJ (geometry only), STL (geometry only, no printability guarantee), and a ZIP project with source photos/assets and manifest. Local saves use IndexedDB.
+Imports: GLB, glTF (+ matching BIN/textures), OBJ (+ matching MTL/textures), STL, PLY (mesh or point cloud). Select related files together, or use Import model folder. Linked files are matched by filename; filenames must be unique within a model import. Exports: GLB (materials where supported), OBJ (geometry only), STL (geometry only, no printability guarantee), and a ZIP project with source photos/assets and manifest. Local autosave and up to 12 named project snapshots use IndexedDB (browser/device local only). ZIP remains the portable backup.
 
 ## Privacy
 
