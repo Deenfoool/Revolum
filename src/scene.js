@@ -10,6 +10,7 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import {selectVoxelPoints,encodeCloudPly} from './pointcloud.js';
+import {runMeshOperation} from './mesh-operations.js';
 
 export const MODEL_EXTENSIONS = ['glb','gltf','obj','stl','ply'];
 const uuid = () => crypto.randomUUID?.() || 'r-' + Date.now() + '-' + Math.random().toString(36).slice(2);
@@ -197,6 +198,52 @@ export class Studio3D {
   clear(){this.select(null);for(const id of [...this.items.keys()])this.remove(id)}
   applyTransform(id,t,notify=true){const root=this.items.get(id)?.root;if(!root)return;root.position.fromArray(t.position||[0,0,0]);root.rotation.set(...(t.rotation||[0,0,0]));root.scale.fromArray(t.scale||[1,1,1]);if(notify)this.notify()}
   getTransform(id){const o=this.items.get(id)?.root;if(!o)return null;return {position:o.position.toArray(),rotation:[o.rotation.x,o.rotation.y,o.rotation.z],scale:o.scale.toArray()}}
+  getEditableMesh(id){
+    const item=this.items.get(id);
+    if(!item||!['multiview-depth-tsdf','mesh-processed'].includes(item.method))return null;
+    const meshes=[];let hasOther=false;
+    item.root.traverse(o=>{if(o.isMesh)meshes.push(o);else if(o.isPoints||o.isSkinnedMesh)hasOther=true});
+    if(meshes.length!==1||hasOther)return null;
+    const mesh=meshes[0],geom=mesh.geometry;
+    if(mesh.isSkinnedMesh||mesh.morphTargetInfluences?.length||!geom?.index||
+       geom.getAttribute('position')?.itemSize!==3||geom.getAttribute('color')?.itemSize<3||
+       geom.getAttribute('color')?.count!==geom.getAttribute('position')?.count||
+       mesh.material?.map||Array.isArray(mesh.material))return null;
+    return mesh;
+  }
+  async processMesh(id,method,cellRatio=.02){
+    const item=this.items.get(id),mesh=this.getEditableMesh(id);
+    if(!mesh)throw Error('Инструмент доступен для одиночного индексированного Dense Mesh с цветами вершин');
+    const geom=mesh.geometry,attr=geom.getAttribute('position'),col=geom.getAttribute('color');
+    const positions=new Float32Array(attr.count*3),colors=new Float32Array(attr.count*3);
+    for(let i=0;i<attr.count;i++){
+      positions[i*3]=attr.getX(i);positions[i*3+1]=attr.getY(i);positions[i*3+2]=attr.getZ(i);
+      colors[i*3]=col.getX(i);colors[i*3+1]=col.getY(i);colors[i*3+2]=col.getZ(i);
+    }
+    const source={positions,colors,indices:Uint32Array.from(geom.index.array)};
+    const result=await runMeshOperation(source,method,cellRatio);
+    const next=new THREE.BufferGeometry();
+    next.setAttribute('position',new THREE.BufferAttribute(result.positions,3));
+    next.setAttribute('color',new THREE.BufferAttribute(result.colors,3));
+    next.setIndex(new THREE.BufferAttribute(result.indices,1));
+    next.computeVertexNormals();next.computeBoundingBox();next.computeBoundingSphere();
+    // Serialize a clone with root's *editor transform removed*. Snapshots keep
+    // this transform separately; including it in GLB would double-apply on restore.
+    const exportRoot=item.root.clone(true);
+    exportRoot.position.set(0,0,0);exportRoot.rotation.set(0,0,0);exportRoot.scale.set(1,1,1);
+    let exportMesh=null;exportRoot.traverse(o=>{if(o.isMesh)exportMesh=o});
+    if(!exportMesh){next.dispose();throw Error('Mesh отсутствует в клоне для экспорта')}
+    exportMesh.geometry=next;
+    let binary;
+    try{binary=await new GLTFExporter().parseAsync(exportRoot,{binary:true,onlyVisible:true})}
+    catch(error){next.dispose();throw Error('Не удалось закодировать обновлённую модель в GLB: '+error.message)}
+    const safe=(item.name||'edited-mesh').replace(/[^a-z0-9а-яё_-]+/gi,'-').slice(0,60)||'mesh';
+    const sourceFile=new File([binary],safe+'-edited.glb',{type:'model/gltf-binary'});
+    const old=mesh.geometry;mesh.geometry=next;item.sourceFile=sourceFile;
+    item.method='mesh-processed';item.meshReport={...result.operation,quality:result.quality};
+    old.dispose();this.notify();
+    return item.meshReport;
+  }
   getPointCloud(id){
     const item=this.items.get(id),root=item?.root;
     return root?.children?.length===1&&root.children[0].isPoints&&item.sourceFile?.name?.toLowerCase().endsWith('.ply')?root.children[0]:null;
@@ -224,7 +271,7 @@ export class Studio3D {
   view(type){const center=this.orbit.target.clone(),distance=Math.max(this.camera.position.distanceTo(center),4);const v={front:[0,0,1],right:[1,0,0],top:[0,1,.00001],perspective:[1,.7,1]}[type];if(!v)return;const direction=new THREE.Vector3(...v).normalize();this.camera.position.copy(center).addScaledVector(direction,distance);this.camera.up.set(0,1,0);this.camera.lookAt(center);this.orbit.update()}
   setTool(mode){this.transform.setMode(mode)}
   image(){return this.renderer.domElement.toDataURL('image/png')}
-  snapshot(){return [...this.items.values()].map(item=>({id:item.id,name:item.name,kind:item.kind,primitive:item.primitive||null,sourceFile:item.sourceFile||null,resourceFiles:item.resourceFiles||[],transform:this.getTransform(item.id)}))}
+  snapshot(){return [...this.items.values()].map(item=>({id:item.id,name:item.name,kind:item.kind,primitive:item.primitive||null,sourceFile:item.sourceFile||null,resourceFiles:item.resourceFiles||[],method:item.method||null,meshReport:item.meshReport||null,transform:this.getTransform(item.id)}))}
   async restore(items=[]){this.clear();for(const item of items){try{if(item.kind==='model'&&item.sourceFile)await this.importFile(item.sourceFile,{...item,silent:true});else if(item.kind==='primitive')this.addPrimitive(item.primitive,{...item,silent:true});}catch(error){this.hooks.onError?.('Не удалось восстановить '+item.name+': '+error.message)}}this.select(null);this.frame()}
   async exportScene(format) {
     if(!this.items.size)throw Error('В сцене пока нет объектов');

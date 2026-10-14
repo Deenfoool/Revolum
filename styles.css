@@ -136,3 +136,8 @@
 .mvs-quality-grid span{overflow-wrap:anywhere}
 .mvs-quality p{font-size:10px;color:#aebed3;margin:11px 0 0}
 @media(max-width:580px){.mvs-quality-grid{grid-template-columns:1fr}.mvs-clean-label{max-width:none}}
+
+/* M4 selected Dense Mesh tools: lightweight controls in Object Studio. */
+#mesh-tools .quality-note{font-size:10px;line-height:1.65;color:#9eafc9}
+#mesh-tools .btn{margin-top:7px;justify-content:center;gap:8px}
+.mesh-tool-status{border-top:1px solid #334861;margin-top:13px;padding-top:11px;color:#9cb7d7;font-size:10px;line-height:1.6;overflow-wrap:anywhere}

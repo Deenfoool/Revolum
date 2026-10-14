@@ -28,7 +28,7 @@ async function restoreSnapshot(snapshot,notify=false){
 }
 async function undo(){if(!state.history.length||state.busy||!canDiscardSplat())return;const prev=state.history.pop();state.redo.push(capture());await restoreSnapshot(prev)}
 async function redo(){if(!state.redo.length||state.busy||!canDiscardSplat())return;const next=state.redo.pop();state.history.push(capture());await restoreSnapshot(next)}
-function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn','new-btn','restore-btn','open-zip-btn','add-shape','delete-object','depth-quality','depth-strength','cloud-reduce','cloud-voxel'])$(id).disabled=b;$('reconstruct-selected').disabled=b||!state.selectedPhotoId;$('mv-start').disabled=b||state.photos.length<8||!!multiview?.ready||mvPending;$('mv-preset').disabled=b||!!multiview?.ready||mvPending;}
+function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn','new-btn','restore-btn','open-zip-btn','add-shape','delete-object','depth-quality','depth-strength','cloud-reduce','cloud-voxel','mesh-simplify','mesh-orient','mesh-cell'])$(id).disabled=b;$('reconstruct-selected').disabled=b||!state.selectedPhotoId;$('mv-start').disabled=b||state.photos.length<8||!!multiview?.ready||mvPending;$('mv-preset').disabled=b||!!multiview?.ready||mvPending;}
 function beginImport(label,total){
   state.importController=new AbortController();setBusy(true);
   $('import-status').classList.remove('hidden');$('import-progress').max=Math.max(1,total);$('import-progress').value=0;
@@ -60,7 +60,9 @@ function renderInspector(){
   const item=engine.items.get(engine.selectedId);$('inspector-empty').classList.toggle('hidden',!!item);$('inspector-fields').classList.toggle('hidden',!item);
   if(!item)return;
   if(document.activeElement!==$('selected-name'))$('selected-name').value=item.name;
-  const isCloud=!!engine.getPointCloud(item.id);
+  const isCloud=!!engine.getPointCloud(item.id),isEditableMesh=!!engine.getEditableMesh(item.id);
+  $('mesh-tools').classList.toggle('hidden',!isEditableMesh);
+  if(isEditableMesh){const r=item.meshReport;$('mesh-tool-status').textContent=r?('Последняя операция: '+(r.method==='consistent-winding'?'ориентация граней':'упрощение')+' · '+r.triangles.toLocaleString('ru-RU')+' треугольников · граничных рёбер '+r.quality.boundaryEdges+'. Модель не сертифицирована для 3D-печати.'):'Исходный Dense Mesh. Результат обработки сохраняется в GLB и поддерживает Undo.';}
   $('selected-kind').textContent=isCloud?'POINT CLOUD / PLY':item.kind==='model'?'IMPORTED MODEL':'PROCEDURAL SHAPE';
   $('cloud-tools').classList.toggle('hidden',!isCloud);
   const t=engine.getTransform(item.id);
@@ -483,6 +485,21 @@ async function saveLibraryCopy(){
  catch(error){toast('Ошибка сохранения: '+error.message,'error')}finally{setBusy(false)}
 }
 function confirmReset(){if(!confirm('Очистить текущую сцену и фотосет? Сначала сохраните ZIP, если нужна резервная копия.')||!canDiscardSplat())return;if(multiview){multiview.reset().catch(console.warn);multiview=null;resetMultiviewUi()}commitHistory();state.loading=true;engine.clear();clearPhotos();state.name='Untitled scan';$('project-name').value=state.name;state.loading=false;setMode('object');renderAll();queueSave()}
+async function processSelectedMesh(method){
+  const id=engine.selectedId;
+  if(state.busy||!engine.getEditableMesh(id))return;
+  const before=capture();setBusy(true);
+  $('mesh-tool-status').textContent=method==='simplify'?'Упрощение сетки в Worker…':'Согласование ориентации граней в Worker…';
+  try{
+    const report=await engine.processMesh(id,method,Number($('mesh-cell').value));
+    commitHistory(before);renderInspector();queueSave();
+    const result=report.sourceTriangles+' → '+report.triangles+' треугольников';
+    toast((method==='simplify'?'Mesh упрощён: ':'Ориентация граней обработана: ')+result,'success');
+  }catch(error){
+    $('mesh-tool-status').textContent='Операция не выполнена: '+error.message;
+    toast('Mesh: '+error.message,'error');
+  }finally{setBusy(false)}
+}
 async function reduceCloud(){
   const id=engine.selectedId;if(state.busy||!engine.getPointCloud(id))return;
   const before=capture();setBusy(true);
@@ -557,6 +574,8 @@ function bind(){
   $('tool-move').onclick=()=>setTool('translate');$('tool-rotate').onclick=()=>setTool('rotate');$('tool-scale').onclick=()=>setTool('scale');$('add-shape').onclick=chooseShape;
   $('delete-object').onclick=removeObject;$('inspector-delete').onclick=removeObject;
   $('cloud-reduce').onclick=reduceCloud;
+  $('mesh-simplify').onclick=()=>processSelectedMesh('simplify');
+  $('mesh-orient').onclick=()=>processSelectedMesh('orient');
   $('frame-btn').onclick=()=>engine.frame(engine.selectedId);
   $('shot-btn').onclick=()=>{try{const data=engine.image();const a=document.createElement('a');a.href=data;a.download=safeFilename(state.name)+'-viewport.png';a.click()}catch(error){toast(error.message,'error')}};
   for(const btn of document.querySelectorAll('[data-view]'))btn.onclick=()=>{engine.view(btn.dataset.view);document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b===btn))};

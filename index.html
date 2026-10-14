@@ -48,7 +48,7 @@
         <button id="import-model-btn" class="btn btn-outline btn-full"><i data-lucide="package-plus"></i> Импорт модели</button>
         <button id="import-model-folder-btn" class="btn btn-outline btn-full"><i data-lucide="folder-input"></i> Импорт папки модели</button>\n        <button id="import-photos-btn" class="btn btn-outline btn-full hidden"><i data-lucide="images"></i> Добавить фотографии</button>
         <div class="storage-note"><i data-lucide="hard-drive"></i><span>Файлы остаются на устройстве. Экспортируйте ZIP для резервной копии.</span></div>
-        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.4.1</span></div>
+        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.4.2</span></div>
       </div>
     </aside>
     <main class="main-area">
@@ -142,6 +142,18 @@
           <div class="inspector-block"><div class="overline">SELECTED ASSET</div><input class="inspector-name" id="selected-name" maxlength="70" aria-label="Имя объекта"><div class="asset-kind" id="selected-kind">MESH OBJECT</div></div>
           <div class="inspector-block"><div class="block-header"><span>TRANSFORM</span><button class="icon-btn icon-btn-sm" id="reset-transform" title="Сбросить трансформации"><i data-lucide="rotate-ccw"></i></button></div><label class="field-label">Position <span>METERS / SCENE UNITS</span></label><div class="vector-fields" data-group="position"><label><b>X</b><input type="number" step="0.1" data-vector="position" data-axis="x" aria-label="Position X"></label><label><b>Y</b><input type="number" step="0.1" data-vector="position" data-axis="y" aria-label="Position Y"></label><label><b>Z</b><input type="number" step="0.1" data-vector="position" data-axis="z" aria-label="Position Z"></label></div><label class="field-label">Rotation <span>DEGREES</span></label><div class="vector-fields" data-group="rotation"><label><b>X</b><input type="number" step="1" data-vector="rotation" data-axis="x" aria-label="Rotation X"></label><label><b>Y</b><input type="number" step="1" data-vector="rotation" data-axis="y" aria-label="Rotation Y"></label><label><b>Z</b><input type="number" step="1" data-vector="rotation" data-axis="z" aria-label="Rotation Z"></label></div><label class="field-label">Scale <span>FACTOR</span></label><div class="vector-fields" data-group="scale"><label><b>X</b><input type="number" step="0.1" data-vector="scale" data-axis="x" aria-label="Scale X"></label><label><b>Y</b><input type="number" step="0.1" data-vector="scale" data-axis="y" aria-label="Scale Y"></label><label><b>Z</b><input type="number" step="0.1" data-vector="scale" data-axis="z" aria-label="Scale Z"></label></div></div>
           <div class="inspector-block"><div class="block-header"><span>GEOMETRY</span></div><div class="property-row"><span>Meshes</span><strong id="detail-meshes">—</strong></div><div class="property-row"><span>Triangles</span><strong id="detail-triangles">—</strong></div><div class="property-row"><span>Points</span><strong id="detail-points">—</strong></div><div class="property-row"><span>Size (local)</span><strong id="detail-size">—</strong></div></div>
+          <div class="inspector-block hidden" id="mesh-tools">
+            <div class="block-header"><span>MESH / OPTIMIZATION</span></div>
+            <p class="quality-note">Для одиночной индексированной реконструкции TSDF. Упрощение объединяет близкие вершины с сохранением RGB-цветов, без гарантии сохранения топологии. Исправление ориентации согласует соседние грани; нормали пересчитываются автоматически.</p>
+            <label class="field-label" for="mesh-cell">Шаг упрощения · доля диагонали Mesh</label>
+            <select id="mesh-cell" class="cloud-voxel-select">
+              <option value="0.01">1% · лёгкое</option><option value="0.02" selected>2% · умеренное</option>
+              <option value="0.04">4% · заметное</option><option value="0.06">6% · сильное</option>
+            </select>
+            <button id="mesh-simplify" class="btn btn-outline btn-full"><i data-lucide="shrink"></i> Упростить Mesh</button>
+            <button id="mesh-orient" class="btn btn-outline btn-full"><i data-lucide="arrow-up-down"></i> Согласовать нормали</button>
+            <div id="mesh-tool-status" class="mesh-tool-status" role="status" aria-live="polite">Результат сохраняется в GLB; доступен Undo и ZIP проекта.</div>
+          </div>
           <div class="inspector-block hidden" id="cloud-tools"><div class="block-header"><span>POINT CLOUD / CLEANUP</span></div><p class="quality-note">Voxel-прореживание оставляет одну реальную точку на пространственную ячейку. Размер ячейки считается от диагонали облака. Новая версия сохраняется в исходном формате PLY и поддерживает Undo.</p><label class="field-label" for="cloud-voxel">Размер вокселя</label><select id="cloud-voxel" class="cloud-voxel-select"><option value="0.005">0,5% · лёгкое</option><option value="0.01">1% · умеренное</option><option value="0.025" selected>2,5% · заметное</option><option value="0.05">5% · сильное</option></select><button id="cloud-reduce" class="btn btn-outline btn-full"><i data-lucide="scan-line"></i> Проредить облако</button></div>
           <div class="inspector-block"><button id="inspector-delete" class="btn btn-danger btn-full"><i data-lucide="trash-2"></i> Удалить объект</button></div>
         </div>

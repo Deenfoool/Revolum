@@ -60,7 +60,10 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 ## M4 — Production workflows
 - [ ] Scene assembly from multiple independent scans
 - [x] First-pass Dense Mesh topology diagnostics: boundary / non-manifold / winding checks; automatic zero-area face removal and optional dust fragment pruning
-- [ ] Full mesh decimation, normals repair, UVs, intersection/thickness/printability tests and hole filling
+- [x] Bounded single-Dense-Mesh vertex clustering with RGB preservation, processed-GLB persistence and Worker execution
+- [x] Consistent indexed triangle winding repair; outward orientation for closed components and vertex normal recompute; refuse non-manifold repair
+- [x] Preserve processing method and diagnostic report through local snapshots and portable ZIP
+- [ ] Quality-aware QEM decimation, UV/textured and multi-mesh editing, robust self-intersection, wall-thickness/printability checks and hole filling
 - [ ] Measuring against a known physical reference
 - [ ] Versioned portable projects and migrations
 - [ ] Export adapters and licensing/compliance audit
