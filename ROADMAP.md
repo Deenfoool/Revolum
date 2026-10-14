@@ -16,7 +16,8 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 
 ## M2 — Scan preparation
 - [x] Camera capture and video-to-frames (browser-only, video up to 5 minutes and 48 sampled frames)
-- [ ] EXIF analysis and visual coverage map
+- [x] Bounded local JPEG EXIF inspector (camera, lens, date, ISO, orientation; GPS presence warning, no coordinates)
+- [ ] Visual camera coverage map and non-JPEG metadata support
 - [x] Heuristic near-duplicate, low-detail, resolution and exposure warnings (not reliable blur/focus measurement)
 - [ ] Actual sharp-frame selection and perceptual quality calibration
 - [x] Flat filename-based multi-file glTF/BIN/textures and OBJ/MTL/textures import and ZIP dependency persistence

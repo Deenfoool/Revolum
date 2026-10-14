@@ -1,3 +1,4 @@
+import { inspectExif } from './exif.js';
 export const PHOTO_EXTENSIONS=['jpg','jpeg','png','webp','heic','heif'];
 export const formatSize=bytes=>bytes>=1024**3?(bytes/1024**3).toFixed(2)+' GB':bytes>=1024**2?(bytes/1024**2).toFixed(1)+' MB':Math.ceil(bytes/1024)+' KB';
 export function isPhoto(file){return PHOTO_EXTENSIONS.includes((file.name||'').toLowerCase().split('.').pop())}
@@ -40,11 +41,13 @@ export async function inspectPhoto(file){
     const width=bitmap.width,height=bitmap.height,flags=[];
     if(width<1600||height<1200)flags.push('Низкое разрешение');
     const {mean,darkRatio,brightRatio,edgeScore,hash}=imageMetrics(bitmap);
+    const exif=await inspectExif(file);
+    if(exif?.hasGps)flags.push('В EXIF есть геоданные GPS');
     if(mean<45||darkRatio>.55)flags.push('Возможно слишком темно');
     if(mean>220||brightRatio>.55)flags.push('Возможно пересвет');
     if(edgeScore<7)flags.push('Мало текстуры / возможный смаз');
-    return {width,height,flags,hash,mean,sharpness:Math.round(edgeScore*10)/10};
+    return {width,height,flags,hash,mean,sharpness:Math.round(edgeScore*10)/10,exif};
   } catch(error) {throw Error('Не удалось прочитать '+file.name+'. Формат может не поддерживаться браузером.')}
   finally {bitmap?.close()}
 }
-export function photoView(photo){return {id:photo.id,file:photo.file,width:photo.width,height:photo.height,flags:photo.flags||[],hash:photo.hash,mean:photo.mean,sharpness:photo.sharpness}}
+export function photoView(photo){return {id:photo.id,file:photo.file,width:photo.width,height:photo.height,flags:photo.flags||[],hash:photo.hash,mean:photo.mean,sharpness:photo.sharpness,exif:photo.exif||null}}

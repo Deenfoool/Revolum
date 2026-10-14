@@ -5,7 +5,7 @@ import { saveLocal,loadLocal,exportProjectZip,importProjectZip,download,safeFile
 const $=id=>document.getElementById(id);
 const icons=()=>window.lucide?.createIcons();
 const uid=()=>crypto.randomUUID?.()||'p'+Date.now()+Math.random().toString(36).slice(2);
-const state={name:'Untitled scan',photos:[],mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve()};
+const state={name:'Untitled scan',photos:[],selectedPhotoId:null,mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve()};
 let engine;
 let videoController=null,cameraStream=null;
 function toast(message,type='info'){const item=document.createElement('div');item.className='toast '+type;item.textContent=message;$('toast-stack').appendChild(item);setTimeout(()=>item.remove(),5300)}
@@ -18,7 +18,7 @@ function commitHistory(before){state.history.push(before||capture());if(state.hi
 async function restoreSnapshot(snapshot,notify=false){
   state.loading=true;
   try{state.name=snapshot.name||'Untitled scan';$('project-name').value=state.name;
-    clearPhotos();state.photos=(snapshot.photos||[]).map(p=>({...p,url:URL.createObjectURL(p.file)}));
+    clearPhotos();state.photos=(snapshot.photos||[]).map(p=>({...p,url:URL.createObjectURL(p.file)}));state.selectedPhotoId=state.photos[0]?.id||null;
     await engine.restore(snapshot.objects||[]);
     renderAll();if(notify)toast('Проект восстановлен','success');
   }finally{state.loading=false;queueSave()}
@@ -56,27 +56,35 @@ function renderInspector(){
   $('detail-triangles').textContent=info.triangles.toLocaleString('ru-RU');
   $('detail-size').textContent=info.size.map(n=>n.toFixed(2)).join(' × ');
 }
-function clearPhotos(){for(const photo of state.photos)URL.revokeObjectURL(photo.url);state.photos=[]}
-function removePhoto(id){const before=capture();const index=state.photos.findIndex(p=>p.id===id);if(index<0)return;commitHistory(before);URL.revokeObjectURL(state.photos[index].url);state.photos.splice(index,1);renderPhotos();queueSave()}
+function clearPhotos(){for(const photo of state.photos)URL.revokeObjectURL(photo.url);state.photos=[];state.selectedPhotoId=null}
+function removePhoto(id){const before=capture();const index=state.photos.findIndex(p=>p.id===id);if(index<0)return;commitHistory(before);URL.revokeObjectURL(state.photos[index].url);state.photos.splice(index,1);if(state.selectedPhotoId===id)state.selectedPhotoId=state.photos[Math.min(index,state.photos.length-1)]?.id||null;renderPhotos();queueSave()}
 function renderPhotos(){
   $('dock-photo-count').textContent=state.photos.length;$('photo-stat-count').textContent=String(state.photos.length).padStart(2,'0');$('photo-count-header').textContent='('+state.photos.length+')';
   $('photo-stat-resolution').textContent=String(state.photos.filter(p=>p.flags.some(f=>f.includes('разрешение'))).length).padStart(2,'0');
   $('photo-stat-exposure').textContent=String(state.photos.filter(p=>p.flags.some(f=>f.includes('темно')||f.includes('пересвет'))).length).padStart(2,'0');
   $('photo-stat-size').textContent=formatSize(state.photos.reduce((n,p)=>n+p.file.size,0));
+  $('photo-stat-gps').textContent=String(state.photos.filter(p=>p.exif?.hasGps).length).padStart(2,'0');
+  if(!state.photos.some(p=>p.id===state.selectedPhotoId))state.selectedPhotoId=state.photos[0]?.id||null;
   const issueMap=new Map();state.photos.forEach((p,i)=>issueMap.set(p.id,photoIssues(p,state.photos.slice(0,i))));
   const film=$('filmstrip'),grid=$('photo-grid'),side=$('photo-side-list');film.replaceChildren();grid.replaceChildren();side.replaceChildren();
   if(!state.photos.length){film.innerHTML='<span class="filmstrip-empty">Добавьте фотографии для нового скана <i data-lucide="arrow-right"></i></span>';grid.innerHTML='<div class="photo-empty"><i data-lucide="image-plus"></i><strong>Пока нет фотографий</strong><span>JPEG, PNG, WebP или HEIC (если браузер поддерживает декодирование)</span></div>';side.innerHTML='<p class="list-empty">Начните с фотографий объекта или помещения.</p>'}
   for(const p of state.photos){
     const thumb=document.createElement('img');thumb.className='film-thumb';thumb.src=p.url;thumb.alt=p.file.name;thumb.title=p.file.name;thumb.loading='lazy';thumb.onclick=()=>setMode('photos');film.append(thumb);
-    const issues=issueMap.get(p.id);const tile=document.createElement('div');tile.className='photo-tile'+(issues.length?' flag':'');
+    const issues=issueMap.get(p.id);const tile=document.createElement('div');tile.className='photo-tile'+(issues.length?' flag':'')+(p.id===state.selectedPhotoId?' selected':'');tile.tabIndex=0;tile.role='button';tile.setAttribute('aria-label','Показать сведения о '+p.file.name);tile.onclick=()=>{state.selectedPhotoId=p.id;renderPhotos()};tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();state.selectedPhotoId=p.id;renderPhotos()}};
     const image=document.createElement('img');image.src=p.url;image.alt=p.file.name;image.loading='lazy';tile.append(image);
-    const btn=document.createElement('button');btn.type='button';btn.className='tile-remove';btn.title='Удалить фото';btn.setAttribute('aria-label','Удалить '+p.file.name);btn.innerHTML='<i data-lucide="x"></i>';btn.onclick=()=>removePhoto(p.id);tile.append(btn);
+    const btn=document.createElement('button');btn.type='button';btn.className='tile-remove';btn.title='Удалить фото';btn.setAttribute('aria-label','Удалить '+p.file.name);btn.innerHTML='<i data-lucide="x"></i>';btn.onclick=e=>{e.stopPropagation();removePhoto(p.id)};tile.append(btn);
     const info=document.createElement('div');info.className='tile-info';const strong=document.createElement('strong');strong.textContent=p.file.name;strong.title=p.file.name;
     const details=document.createElement('span');details.textContent=p.width+' × '+p.height+(issues.length?' · ⚠':' · OK');details.title=issues.join('; ')||'Нет обнаруженных замечаний';info.append(strong,details);tile.append(info);grid.append(tile);
     const entry=document.createElement('div');entry.className='item-entry';entry.innerHTML='<i data-lucide="image"></i><span></span>';entry.querySelector('span').textContent=p.file.name;entry.title=p.file.name;side.append(entry);
   }
   const flagged=state.photos.filter(p=>issueMap.get(p.id).length);
   $('quality-overview').textContent=!state.photos.length?'Добавьте фото — мы проверим разрешение, приблизительную экспозицию, текстуру и схожесть кадров. Это не гарантия успешной реконструкции.':flagged.length?flagged.length+' из '+state.photos.length+' фото требуют внимания: '+flagged.slice(0,3).map(p=>p.file.name+' ('+issueMap.get(p.id).join(', ')+')').join('; ')+'.':'Автоматические предупреждения не обнаружены. Расположение камер и достаточность перекрытия кадров ещё не анализируются.';
+  const active=state.photos.find(p=>p.id===state.selectedPhotoId),panel=$('photo-meta-details');panel.replaceChildren();
+  if(active){
+    const exif=active.exif,rows=[['Файл',active.file.name],['Камера',exif?[exif.make,exif.model].filter(Boolean).join(' ')||'Не указана':'Нет EXIF'],['Объектив',exif?.lens||'—'],['Дата съёмки',exif?.date||'—'],['ISO',exif?.iso||'—'],['Ориентация EXIF',exif?.orientation||'—'],['GPS',exif?.hasGps?'Есть в исходном файле — проверьте перед публикацией':'Не обнаружены']];
+    for(const [key,value] of rows){const row=document.createElement('div');row.className='property-row';const label=document.createElement('span');label.textContent=key;const val=document.createElement('strong');val.textContent=String(value);val.title=String(value);row.append(label,val);panel.append(row)}
+    const note=document.createElement('p');note.className='quality-note';note.textContent='Исходный файл сохраняется без удаления метаданных. EXIF поддерживается для JPEG; отсутствие данных не гарантирует отсутствия скрытой информации.';panel.append(note);
+  }else{const note=document.createElement('p');note.className='quality-note';note.textContent='Выберите фотографию, чтобы посмотреть метаданные камеры и сведения о GPS.';panel.append(note)}
   icons();
 }
 function setMode(mode){state.mode=mode==='photos'?'photos':'object';renderMode()}
@@ -108,7 +116,7 @@ async function addPhotos(files){
   const images=[...files].filter(isPhoto);if(!images.length){toast('Добавьте файлы изображений','error');return}
   setMode('photos');setBusy(true);const before=capture();let added=0;try{
     for(const file of images){if(state.photos.length>=500){toast('Лимит: 500 изображений','error');break}try{
-      const report=await inspectPhoto(file);state.photos.push({id:uid(),file,url:URL.createObjectURL(file),...report});added++;
+      const report=await inspectPhoto(file);const photo={id:uid(),file,url:URL.createObjectURL(file),...report};state.photos.push(photo);if(!state.selectedPhotoId)state.selectedPhotoId=photo.id;added++;
     }catch(error){toast(error.message,'error')}}
     if(added){commitHistory(before);renderPhotos();queueSave();toast('Добавлено фотографий: '+added,'success')}
   }finally{setBusy(false)}
