@@ -6,9 +6,13 @@ Revolum is a static-first project designed for GitHub Pages. The first milestone
 
 See [ROADMAP.md](ROADMAP.md) for implemented and planned features.
 
-## Hosting
+## Publishing (same branch-based scheme as Safelight)
 
-Use GitHub Pages → **Deploy from a branch** → `main` / `(root)`. No GitHub Actions or server required for the first milestone.
+Production entry: [`index.html`](index.html) at the repository root. GitHub Pages **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: `main` → Folder: `/(root)` → Save**. The root `.nojekyll` file is intentionally empty and **must stay committed**: GitHub serves the static files without a Jekyll build. No build output, deploy workflow or GitHub Actions configuration is required.
+
+Intended URL: https://deenfoool.github.io/Revolum/ (GitHub Pages source must be configured in repository settings). Paths in the entry page are relative to the repository subpath (`./styles.css`, `./src/main.js`, `./assets/favicon.svg`). Don't change them to domain-root paths (`/src/...`) or Pages will point at the wrong location.
+
+Unlike Safelight, this early prototype still loads pinned Three.js, Lucide and JSZip from jsDelivr; an internet connection and access to that CDN are currently required. Vendoring dependencies for fully local runtime is a separate roadmap item.
 
 ## Development
 
