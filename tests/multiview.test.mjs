@@ -19,7 +19,9 @@ test('full multiview entry is wired into the static Photo Scan UI',()=>{
  }
  assert.match(js,/import\('\.\/multiview\.js'\)/);
  assert.match(adapter,/createSession\(/);
- assert.match(adapter,/await session\.load\(files\)/);
+ assert.match(adapter,/decodeCapturePhotos\(files,/);
+ assert.match(adapter,/session\.useFrames\(prepared\.frames\)/);
+ assert.match(adapter,/await session\.load\(files\)/); // 360° panorama compatibility
  assert.match(adapter,/await session\.solve\(/);
  assert.match(adapter,/await session\.seed\(/);
  assert.match(adapter,/session\.start\(\)/);
@@ -54,10 +56,10 @@ test('SfM diagnostics and export/backup controls are wired',()=>{
 
 test('WebGPU preflight passes bounded resolution and low-memory options to Splat.js',()=>{
  const adapter=read('src/multiview.js'),main=read('src/main.js'),html=read('index.html');
- assert.match(adapter,/planScanBudget\(meta,/);
+ assert.match(adapter,/planScanBudget\(photoMeta,/);
  assert.match(adapter,/acquireScanDevice\(navigator\.gpu,/);
  assert.match(adapter,/bindingLimit:gpu\.bindingLimit/);
- assert.match(adapter,/device:this\.device/);
+ assert.match(adapter,/session\.opts\.device=this\.device/);
  assert.match(adapter,/lowMem:true/);
  assert.match(adapter,/frames:\{trainMaxDim:this\.budget\.trainMaxDim,featMaxDim:this\.budget\.featMaxDim\}/);
  assert.match(main,/budgetProfile:\$\('mv-memory-profile'\)\.value/);
@@ -75,4 +77,17 @@ test('scan cancellation, device cleanup and stage-scoped browser abort diagnosti
  assert.match(preflight,/requiredFeatures:\[\]/);
  assert.match(preflight,/powerPreference of \['high-performance','low-power'\]/);
  assert.match(read('vendor/splatjs/src/session.js'),/device: this\.opts\.device/);
+});
+
+test('ordinary photos decode before GPU acquisition, with a per-file HTMLImage fallback',()=>{
+ const adapter=read('src/multiview.js'),fallback=read('src/decode-resilient.js');
+ const decode=adapter.indexOf('await decodeCapturePhotos(files,');
+ const acquire=adapter.indexOf('await acquireScanDevice(navigator.gpu,');
+ assert.ok(decode>=0&&acquire>decode,'photo decode must happen before WebGPU device acquisition');
+ assert.match(adapter,/session\.useFrames\(prepared\.frames\)/);
+ assert.match(adapter,/session\.opts\.device=this\.device/);
+ assert.match(fallback,/function htmlImage\(/);
+ assert.match(fallback,/new Image\(\)/);
+ assert.match(fallback,/processSource\(drawable\.source/);
+ assert.match(fallback,/URL\.revokeObjectURL\(url\)/);
 });

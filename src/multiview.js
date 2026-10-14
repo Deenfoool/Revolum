@@ -1,10 +1,11 @@
 // Revolum adapter for vendored Splat.js, MIT (Stratum1 GmbH).
 // Full browser-only SfM + differentiable WebGPU Gaussian splat training.
 // Local import is intentional: no remote reconstruction service or CDN at runtime.
-import {createSession,camPosition} from '../vendor/splatjs/src/session.js?v=0.4.5-abortdiag';
+import {createSession,camPosition} from '../vendor/splatjs/src/session.js?v=0.4.6-resilient-decode';
 import {sfmDiagnostics,scanBundle} from './scan-package.js';
 import {planScanBudget} from './scan-budget.js';
 import {acquireScanDevice,scanError} from './splat-preflight.js';
+import {decodeCapturePhotos} from './decode-resilient.js';
 
 export function validateCapture(files){
   if(!Array.isArray(files)||files.length<8)throw Error('Для многокадрового скана нужно минимум 8 перекрывающихся фотографий');
@@ -106,36 +107,16 @@ export class MultiViewReconstruction{
     await this.reset();
     if(this.cancelRequested)throw Error('Реконструкция отменена');
     const revision=++this.revision;
-    this.controller=new AbortController();const preflightSignal=this.controller.signal;
-    const checkPreflight=()=>{if(preflightSignal.aborted||this.cancelRequested||revision!==this.revision)throw Error('Реконструкция отменена')};
-    this.phase='preflight';this.emit('Проверка WebGPU и расчёт безопасного разрешения фотосета…');
-    try{
-      const gpu=await acquireScanDevice(navigator.gpu,{
-        signal:preflightSignal,onStage:message=>{if(revision===this.revision)this.emit(message)}
-      });
-      this.device=gpu.device;checkPreflight();
-      const validMeta=photoMeta.length===files.length&&photoMeta.every(p=>Number.isFinite(p.width)&&p.width>=64&&Number.isFinite(p.height)&&p.height>=64);
-      const meta=validMeta?photoMeta:await Promise.all(files.map(async file=>{
-        checkPreflight();let img;
-        try{img=await createImageBitmap(file);return {width:img.width,height:img.height}}
-        catch(error){throw Error('Не удалось повторно прочитать размеры '+file.name+': '+error.message)}
-        finally{img?.close?.()}
-      }));
-      checkPreflight();
-      this.budget=planScanBudget(meta,{profile:budgetProfile,bindingLimit:gpu.bindingLimit});
-      this.emit('GPU '+gpu.powerPreference+' · один общий WebGPU device для SfM и тренера. Лимит ресурсов: '+this.budget.trainMaxDim+' px · GPU targets ~'+this.budget.packedMB+' МБ · CPU frames ~'+this.budget.cpuEstimateMB+' МБ'+(this.budget.warning?' · '+this.budget.warning:''),{budget:this.budget});
-      checkPreflight();
-    }catch(error){
-      const normalized=scanError(error,{phase:'preflight',signal:preflightSignal});
-      if(revision===this.revision){
-        this.phase='error';this.emit(normalized.message,{errorStage:'preflight'});
-        this.hooks.onError(normalized,this.report);
-        await this.reset(false);
-      }
-      throw normalized;
-    }
-    this.pending=true;this.phase='decode';this.report=null;
-    const check=()=>{if(this.controller?.signal.aborted||this.cancelRequested||revision!==this.revision)throw Error('Реконструкция отменена')};
+    this.controller=new AbortController();const signal=this.controller.signal;
+    const check=()=>{if(signal.aborted||this.cancelRequested||revision!==this.revision)throw Error('Реконструкция отменена')};
+    const validMeta=photoMeta.length===files.length&&photoMeta.every(p=>Number.isFinite(p.width)&&p.width>=64&&Number.isFinite(p.height)&&p.height>=64);
+    if(!validMeta)throw Error('Нет размеров одного или нескольких снимков. Удалите проблемный кадр и импортируйте его повторно.');
+    // WebGPU guarantees at least 128 MiB maxStorageBufferBindingSize. Prepare
+    // the set conservatively BEFORE acquiring its device: this prevents driver
+    // memory pressure from aborting browser image decoding.
+    this.budget=planScanBudget(photoMeta,{profile:budgetProfile,bindingLimit:128*1048576});
+    this.phase='decode';this.pending=true;this.report=null;
+    this.emit('Декодируем изображения до выделения WebGPU. Профиль: '+this.budget.profileLabel+' · '+this.budget.trainMaxDim+' px.',{budget:this.budget});
     const session=createSession({
       maxIters:Math.max(1000,Math.min(100000,Math.floor(maxIters))),
       itersPerFrame:this.budget.itersPerFrame,
@@ -143,7 +124,6 @@ export class MultiViewReconstruction{
       lowMem:true,
       frames:{trainMaxDim:this.budget.trainMaxDim,featMaxDim:this.budget.featMaxDim},
       perf:false,
-      device:this.device,
     });
     this.session=session;
     this.unsub.push(session.on('stage',event=>{
@@ -167,9 +147,30 @@ export class MultiViewReconstruction{
     }));
     try{
       this.emit('Декодирование '+files.length+' фотографий…');
-      await session.load(files);check();
+      if(this.budget.panorama){
+        // 360 rigs require Splat.js face slicing; no GPU has been allocated yet.
+        await session.load(files);check();
+      }else{
+        const prepared=await decodeCapturePhotos(files,{
+          photoMeta,trainMaxDim:this.budget.trainMaxDim,featMaxDim:this.budget.featMaxDim,
+          signal,onProgress:event=>{if(revision===this.revision)this.emit(event.message,{stage:event.stage,done:event.done,total:event.total})}
+        });check();
+        session.useFrames(prepared.frames);
+        const html=prepared.fallbacks.filter(f=>f.method==='html-canvas');
+        if(html.length)this.emit('Резервный HTML/Canvas-декодер восстановил '+html.length+' фото: '+html.map(f=>f.name).slice(0,3).join(', '));
+      }
       if(session.frames.length<Math.max(4,Math.ceil(files.length*.5)))throw Error('Декодировано только '+session.frames.length+'/'+files.length+' кадров. Проверьте формат, повреждённые снимки и доступную память.');
-      this.phase='solve';this.emit('Автоматическое сопоставление признаков и расчёт положений камер…');
+      check();this.phase='preflight';
+      this.emit('Фотографии готовы. Инициализируем WebGPU после декодирования…');
+      const gpu=await acquireScanDevice(navigator.gpu,{signal,onStage:message=>{if(revision===this.revision)this.emit(message)}});check();
+      this.device=gpu.device;
+      // Current frames were prepared at the conservative WebGPU minimum.
+      // A device with weaker-than-required limits must fail explicitly.
+      const supported=planScanBudget(photoMeta,{profile:budgetProfile,bindingLimit:gpu.bindingLimit});
+      if(supported.trainMaxDim<this.budget.trainMaxDim)throw Error('GPU-устройство имеет меньший лимит, чем нужен подготовленным кадрам. Выберите экономный профиль.');
+      session.opts.device=this.device;
+      this.emit('WebGPU готов · один общий device для SfM и 3DGS · '+gpu.powerPreference);
+      check();this.phase='solve';this.emit('Автоматическое сопоставление признаков и расчёт положений камер…');
       const recon=await session.solve({signal:this.controller.signal});check();
       this.report=sfmDiagnostics(recon,session.frames);
       const minCameras=Math.max(4,Math.ceil(files.length*.5));

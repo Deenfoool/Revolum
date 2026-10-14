@@ -5,11 +5,11 @@ const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('HTML versioned entry and dynamic engine import are independently cache-busted',()=>{
  const html=read('index.html'),main=read('src/main.js'),adapter=read('src/multiview.js');
- assert.match(html,/src="\.\/src\/main\.js\?v=0\.4\.5-abortdiag"/);
- assert.match(html,/v0\.4\.5/);
- assert.match(main,/APP_BUILD='0\.4\.5-abortdiag'/);
- assert.match(main,/import\('\.\/multiview\.js\?v=0\.4\.5-abortdiag'\)/);
- assert.match(adapter,/from '\.\.\/vendor\/splatjs\/src\/session\.js\?v=0\.4\.5-abortdiag'/);
+ assert.match(html,/src="\.\/src\/main\.js\?v=0\.4\.6-resilient-decode"/);
+ assert.match(html,/v0\.4\.6/);
+ assert.match(main,/APP_BUILD='0\.4\.6-resilient-decode'/);
+ assert.match(main,/import\('\.\/multiview\.js\?v=0\.4\.6-resilient-decode'\)/);
+ assert.match(adapter,/from '\.\.\/vendor\/splatjs\/src\/session\.js\?v=0\.4\.6-resilient-decode'/);
  assert.doesNotMatch(adapter,/from '\.\.\/vendor\/splatjs\/src\/index\.js'/);
 });
 test('the module-loading failure is diagnosed before invoking the GPU adapter',()=>{

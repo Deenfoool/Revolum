@@ -1,11 +1,11 @@
 {
   "name": "revolum",
   "private": true,
-  "version": "0.4.5",
+  "version": "0.4.6",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check src/main.js && node --check src/scene.js && node --check src/photos.js && node --check src/storage.js && node --check src/capture.js && node --check src/exif.js && node --check src/depth-worker.js && node --check src/depth-grid.js && node --check src/depth-reconstruct.js && node --check src/multiview.js && node --check src/scan-package.js && node --check src/scan-budget.js && node --check src/pointcloud.js && node --check src/mvs-core.js && node --check src/mvs-worker.js && node --check src/mvs-job.js && node --check src/mesh-quality.js && node --check src/mesh-tools.js && node --check src/mesh-tools-worker.js && node --check src/mesh-operations.js && node --check src/mesh-qem.js && node --check src/mesh-audit.js && node --check src/splat-preflight.js"
+    "check": "node --check src/main.js && node --check src/scene.js && node --check src/photos.js && node --check src/storage.js && node --check src/capture.js && node --check src/exif.js && node --check src/depth-worker.js && node --check src/depth-grid.js && node --check src/depth-reconstruct.js && node --check src/multiview.js && node --check src/scan-package.js && node --check src/scan-budget.js && node --check src/pointcloud.js && node --check src/mvs-core.js && node --check src/mvs-worker.js && node --check src/mvs-job.js && node --check src/mesh-quality.js && node --check src/mesh-tools.js && node --check src/mesh-tools-worker.js && node --check src/mesh-operations.js && node --check src/mesh-qem.js && node --check src/mesh-audit.js && node --check src/splat-preflight.js && node --check src/decode-resilient.js"
   },
   "description": "Browser-first reconstruction with scoped SfM/3DGS loading and WebGPU abort diagnostics"
 }

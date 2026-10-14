@@ -8,7 +8,7 @@ const icons=()=>window.lucide?.createIcons();
 const uid=()=>crypto.randomUUID?.()||'p'+Date.now()+Math.random().toString(36).slice(2);
 const state={name:'Untitled scan',photos:[],selectedPhotoId:null,mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve(),importController:null,depthRunning:false};
 let engine;
-const APP_BUILD='0.4.5-abortdiag';
+const APP_BUILD='0.4.6-resilient-decode';
 let mvTrace={build:APP_BUILD,createdAt:new Date().toISOString(),stage:'idle',events:[],error:null};
 const logScan=(stage,message)=>{mvTrace.stage=stage;mvTrace.events.push({time:new Date().toISOString(),stage,message:String(message||'').slice(0,450)});if(mvTrace.events.length>45)mvTrace.events.shift()};
 function scanStartupError(error,stage){
@@ -276,7 +276,7 @@ async function startMultiview(){
   $('mv-status').textContent='Загрузка локального SfM/3DGS движка…';
   try{
     logScan('module-import','Запрашиваем локальные модули SfM/3DGS');
-    const {MultiViewReconstruction}=await import('./multiview.js?v=0.4.5-abortdiag');
+    const {MultiViewReconstruction}=await import('./multiview.js?v=0.4.6-resilient-decode');
     logScan('module-ready','Модуль SfM/3DGS успешно загружен');
     if(mvCancelled)throw Error('Реконструкция отменена до запуска движка');
     multiview=new MultiViewReconstruction({
