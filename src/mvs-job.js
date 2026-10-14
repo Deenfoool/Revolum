@@ -29,7 +29,7 @@ export class DenseMeshJob {
   this.worker?.terminate();this.worker=null;
   this.pending?.reject(Error('Построение Mesh отменено'));this.pending=null;
  }
- async run(multiview,files,{resolution=56,maxViews=12,onProgress=()=>{}}={}){
+ async run(multiview,files,{resolution=56,maxViews=12,cleanSmall=true,onProgress=()=>{}}={}){
   if(this.busy)throw Error('Dense Mesh уже строится');
   if(!multiview?.session?.recon?.cams?.length)throw Error('Сначала выполните SfM');
   if(![40,56,72].includes(resolution))throw Error('Неверная детализация');
@@ -72,7 +72,7 @@ export class DenseMeshJob {
     };
     worker.onerror=e=>{this.pending=null;reject(Error('MVS Worker: '+(e.message||'ошибка вычисления')))};
     const transfers=views.flatMap(v=>[v.depth.buffer,v.image.data.buffer]);
-    worker.postMessage({type:'build',id,payload:{views,points},resolution},transfers);
+    worker.postMessage({type:'build',id,payload:{views,points},resolution,cleanSmall},transfers);
    });
    check();return result;
   }finally{

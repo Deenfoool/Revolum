@@ -45,6 +45,7 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [x] Cancel-before-load guard, export/data-loss warning and UI operation locks during bundle creation
 - [ ] Persist and restore optimizer/trainer state (current ZIP is an export snapshot, not a resumable training state)
 - [x] Experimental dense polygonal Mesh: robustly SfM-align ML depth maps, multi-view TSDF fusion, marching-tetrahedra extraction, vertex colors, GLB/PLY export, cancellation and diagnostics
+- [x] Dense Mesh quality audit and cleanup: invalid / duplicated faces, edge-connected fragment pruning, open/non-manifold/winding edge counts; JSON report; identical cleaned GLB and PLY
 - [ ] Traditional PatchMatch MVS, depth confidence/masking and guaranteed watertight/printable geometry
 - [ ] Quantitative browser smoke test with a real ONNX inference and model/GLB roundtrip on published Pages
 - [x] Local session pipeline with progress, cancellation, GPU device loss and stage/metric events
@@ -58,7 +59,8 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 
 ## M4 — Production workflows
 - [ ] Scene assembly from multiple independent scans
-- [ ] Mesh decimation, normals, UVs, watertightness and printable-mesh checks
+- [x] First-pass Dense Mesh topology diagnostics: boundary / non-manifold / winding checks; automatic zero-area face removal and optional dust fragment pruning
+- [ ] Full mesh decimation, normals repair, UVs, intersection/thickness/printability tests and hole filling
 - [ ] Measuring against a known physical reference
 - [ ] Versioned portable projects and migrations
 - [ ] Export adapters and licensing/compliance audit

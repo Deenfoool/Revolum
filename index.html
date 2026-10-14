@@ -48,7 +48,7 @@
         <button id="import-model-btn" class="btn btn-outline btn-full"><i data-lucide="package-plus"></i> Импорт модели</button>
         <button id="import-model-folder-btn" class="btn btn-outline btn-full"><i data-lucide="folder-input"></i> Импорт папки модели</button>\n        <button id="import-photos-btn" class="btn btn-outline btn-full hidden"><i data-lucide="images"></i> Добавить фотографии</button>
         <div class="storage-note"><i data-lucide="hard-drive"></i><span>Файлы остаются на устройстве. Экспортируйте ZIP для резервной копии.</span></div>
-        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.3.0</span></div>
+        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.4.1</span></div>
       </div>
     </aside>
     <main class="main-area">
@@ -99,12 +99,14 @@
               <div class="mvs-controls">
                 <label>Разрешение объёма<select id="mvs-resolution"><option value="40">Черновик · 40³</option><option value="56" selected>Обычное · 56³</option><option value="72">Высокое · 72³</option></select></label>
                 <label>Максимум камер<select id="mvs-views"><option value="6">6 ракурсов</option><option value="10" selected>10 ракурсов</option><option value="16">16 ракурсов</option></select></label>
+                <label class="mvs-clean-label"><input id="mvs-clean-small" type="checkbox" checked> Убрать мелкие отдельные фрагменты</label>
                 <button class="btn btn-primary" id="mvs-start" disabled><i data-lucide="box"></i> Построить общий Mesh</button>
                 <button class="btn btn-danger hidden" id="mvs-cancel"><i data-lucide="x"></i> Отменить</button>
               </div>
               <p class="reconstruction-status" id="mvs-status" role="status" aria-live="polite">Сначала завершите расчёт камер в многокадровом режиме.</p>
               <progress class="hidden" id="mvs-progress" max="100" value="0" aria-label="Прогресс Dense Mesh"></progress>
-              <div id="mvs-downloads" class="mv-exports hidden"><button class="btn btn-outline" id="mvs-download-glb"><i data-lucide="download"></i> Скачать Mesh (.glb)</button><button class="btn btn-outline" id="mvs-download-ply"><i data-lucide="download"></i> Скачать Mesh (.ply)</button></div>
+              <div id="mvs-quality" class="mvs-quality hidden" role="status" aria-live="polite"></div>
+              <div id="mvs-downloads" class="mv-exports hidden"><button class="btn btn-outline" id="mvs-download-glb"><i data-lucide="download"></i> Скачать Mesh (.glb)</button><button class="btn btn-outline" id="mvs-download-ply"><i data-lucide="download"></i> Скачать Mesh (.ply)</button><button class="btn btn-outline" id="mvs-download-report"><i data-lucide="clipboard-list"></i> Отчёт Mesh (.json)</button></div>
               <p class="reconstruction-disclaimer">Геометрия вычисляется из нескольких ML-карт относительной глубины, привязанных к SfM. Это реальная полигональная реконструкция видимых общих поверхностей, но не COLMAP PatchMatch MVS: не гарантируется метрический масштаб, замкнутость Mesh, скрытые стороны или пригодность к 3D-печати. Требуются минимум 3 успешно согласованные камеры. Первый расчёт скачивает модель глубины; вычисления локальны.</p>
             </div>
             <div class="mv-exports" id="mv-exports">

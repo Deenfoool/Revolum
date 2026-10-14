@@ -214,6 +214,7 @@ function multiviewButtons(){
   $('mvs-start').disabled=!ready||state.busy||!!denseJob?.busy;
   $('mvs-resolution').disabled=!ready||state.busy||!!denseJob?.busy;
   $('mvs-views').disabled=!ready||state.busy||!!denseJob?.busy;
+  $('mvs-clean-small').disabled=!ready||state.busy||!!denseJob?.busy;
   $('mvs-cancel').classList.toggle('hidden',!denseJob?.busy);
   icons();
 }
@@ -224,6 +225,7 @@ function resetMultiviewUi(){
   $('mv-budget').textContent='';$('mv-budget').classList.add('hidden');
   $('mvs-progress').classList.add('hidden');$('mvs-progress').value=0;
   denseExport=null;$('mvs-downloads').classList.add('hidden');
+  $('mvs-quality').replaceChildren();$('mvs-quality').classList.add('hidden');
   $('mvs-status').textContent='Сначала завершите расчёт камер в многокадровом режиме.';
   mvExported=false;mvPackaging=false;
   $('mv-stats').textContent='SfM';$('mv-status').textContent='Нужен WebGPU и 8–120 перекрывающихся фотографий одной неподвижной сцены.';
@@ -278,11 +280,32 @@ async function newMultiview(){
   try{await multiview?.reset()}catch(e){console.warn(e)}
   multiview=null;resetMultiviewUi();
 }
+function renderMvsQuality(stats){
+  const el=$('mvs-quality');el.replaceChildren();
+  const q=stats?.quality;if(!q){el.classList.add('hidden');return}
+  el.classList.remove('hidden');
+  const headline=document.createElement('strong');
+  headline.textContent=q.topologicallyClosed?'Топология замкнута (не проверена для печати)':'Есть открытые края или нарушения топологии';
+  el.append(headline);
+  const rows=[
+   'Граничные рёбра: '+q.boundaryEdges.toLocaleString('ru-RU'),
+   'Неманифолдные рёбра: '+q.nonManifoldEdges.toLocaleString('ru-RU'),
+   'Конфликты ориентации: '+q.windingConflicts.toLocaleString('ru-RU'),
+   'Компоненты: '+q.fragmentsBefore+' → '+q.fragmentsAfter,
+   'Удалены вырожденные грани: '+q.removedDegenerate.toLocaleString('ru-RU'),
+   'Удалены дубли: '+q.removedDuplicates.toLocaleString('ru-RU'),
+   'Удалены мелкие фрагменты: '+q.removedFragments+' ('+q.removedFragmentTriangles.toLocaleString('ru-RU')+' граней)'
+  ];
+  const grid=document.createElement('div');grid.className='mvs-quality-grid';
+  for(const line of rows){const span=document.createElement('span');span.textContent=line;grid.append(span)}
+  el.append(grid);
+  const note=document.createElement('p');note.textContent=q.note;el.append(note);
+}
 async function startDenseMesh(){
   if(state.busy||!multiview?.ready||denseJob?.busy)return;
   const original=multiview;
   const source=state.photos.map(p=>p.file);
-  const resolution=Number($('mvs-resolution').value),maxViews=Number($('mvs-views').value);
+  const resolution=Number($('mvs-resolution').value),maxViews=Number($('mvs-views').value),cleanSmall=$('mvs-clean-small').checked;
   setBusy(true);$('mvs-start').disabled=true;$('mvs-cancel').disabled=false;$('mvs-cancel').classList.remove('hidden');
   try{
     const {DenseMeshJob}=await import('./mvs-job.js');
@@ -290,7 +313,7 @@ async function startDenseMesh(){
     if(multiview.phase==='training')multiview.pause();
     $('mvs-progress').classList.remove('hidden');$('mvs-progress').value=0;
     $('mvs-status').textContent='Подготовка зарегистрированных камер…';
-    const result=await denseJob.run(original,source,{resolution,maxViews,onProgress:e=>{
+    const result=await denseJob.run(original,source,{resolution,maxViews,cleanSmall,onProgress:e=>{
       if(e.message)$('mvs-status').textContent=e.message;
       else if(e.stage==='fusion')$('mvs-status').textContent='Согласование глубины и TSDF: '+e.done+'/'+e.total;
       else if(e.stage==='extract')$('mvs-status').textContent='Извлечение треугольников: '+e.done+'/'+e.total;
@@ -305,7 +328,8 @@ async function startDenseMesh(){
     const before=capture();
     const name='Multi-view Mesh / '+state.name;
     const item=await engine.addDenseMesh({...result,name});
-    denseExport={glb:item.sourceFile,ply,name:safeFilename(state.name)};
+    denseExport={glb:item.sourceFile,ply,name:safeFilename(state.name),stats:result.stats};
+    renderMvsQuality(result.stats);
     $('mvs-downloads').classList.remove('hidden');
     commitHistory(before);queueSave();setMode('object');
     $('mvs-progress').value=100;
@@ -502,6 +526,7 @@ function bind(){
   $('mvs-cancel').onclick=cancelDenseMesh;
   $('mvs-download-glb').onclick=()=>{if(denseExport)download(denseExport.glb,denseExport.name+'-dense.glb')};
   $('mvs-download-ply').onclick=()=>{if(denseExport)download(denseExport.ply,denseExport.name+'-dense.ply')};
+  $('mvs-download-report').onclick=()=>{if(!denseExport)return;const report={format:'revolum-mesh-diagnostics',version:1,source:'depth-assisted multi-view TSDF',scale:'arbitrary',printReady:false,stats:denseExport.stats};download(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}),denseExport.name+'-mesh-report.json')};
   $('mv-cancel').onclick=cancelMultiview;
   $('mv-export-bundle').onclick=exportMultiviewBundle;
   $('mv-new').onclick=newMultiview;

@@ -4,11 +4,15 @@ import {readFileSync,existsSync} from 'node:fs';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 test('dense MVS remains a static browser workflow with proper UI and cancellation',()=>{
  const html=read('index.html'),main=read('src/main.js'),job=read('src/mvs-job.js'),worker=read('src/mvs-worker.js'),scene=read('src/scene.js');
- for(const id of ['mvs-start','mvs-cancel','mvs-progress','mvs-status','mvs-resolution','mvs-views','mvs-download-glb','mvs-download-ply'])assert.match(html,new RegExp('id="'+id+'"'));
+ for(const id of ['mvs-start','mvs-cancel','mvs-progress','mvs-status','mvs-resolution','mvs-views','mvs-download-glb','mvs-download-ply','mvs-clean-small','mvs-quality','mvs-download-report'])assert.match(html,new RegExp('id="'+id+'"'));
  assert.match(main,/denseJob\.run\(/);assert.match(main,/denseJob\.cancel\(\)/);
  assert.match(job,/estimateDepth\(file/);assert.match(job,/new Worker\(new URL\('\.\/mvs-worker\.js',import\.meta\.url\)/);
  assert.match(job,/this\.worker\?\.terminate\(\)/);
  assert.match(worker,/reconstructDense\(/);
+ assert.match(worker,/prepareMesh\(result/);assert.match(job,/resolution,cleanSmall/);
+ assert.match(main,/renderMvsQuality\(result\.stats\)/);
+ assert.match(main,/revolum-mesh-diagnostics/);
  assert.match(scene,/async addDenseMesh\(/);assert.match(scene,/new GLTFExporter\(\)\.parseAsync\(root/);
  assert.ok(existsSync(new URL('../src/mvs-core.js',import.meta.url)));
+ assert.ok(existsSync(new URL('../src/mesh-quality.js',import.meta.url)));
 });

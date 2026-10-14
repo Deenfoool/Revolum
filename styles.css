@@ -126,3 +126,13 @@
 .mvs-panel .btn:disabled{opacity:.47}
 .mvs-panel .reconstruction-disclaimer{color:#a3b6cb}
 @media(max-width:580px){.mvs-panel{padding:13px}.mvs-controls label{flex:1}.mvs-controls select{width:100%;min-width:0}.mvs-controls button{flex:1}}
+
+/* Dense-mesh quality evidence: neutral diagnostics, never a printable badge. */
+.mvs-clean-label{display:flex!important;align-items:center;gap:8px;color:#b5c9df!important;font-size:10px;max-width:240px;line-height:1.45;padding-bottom:6px}
+.mvs-clean-label input{width:15px;height:15px;flex:0 0 auto;accent-color:#9bbbe9}
+.mvs-quality{margin:12px 0;padding:13px;border:1px solid #4c6279;border-radius:8px;background:#1b2a3c;color:#bdcfe4;font-size:11px;line-height:1.55}
+.mvs-quality>strong{display:block;color:#e2e9f3;margin-bottom:9px}
+.mvs-quality-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;font-variant-numeric:tabular-nums}
+.mvs-quality-grid span{overflow-wrap:anywhere}
+.mvs-quality p{font-size:10px;color:#aebed3;margin:11px 0 0}
+@media(max-width:580px){.mvs-quality-grid{grid-template-columns:1fr}.mvs-clean-label{max-width:none}}
