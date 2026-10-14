@@ -19,7 +19,8 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [ ] EXIF analysis and visual coverage map
 - [x] Heuristic near-duplicate, low-detail, resolution and exposure warnings (not reliable blur/focus measurement)
 - [ ] Actual sharp-frame selection and perceptual quality calibration
-- [ ] Multi-file glTF resource and textured OBJ/MTL handling
+- [x] Flat filename-based multi-file glTF/BIN/textures and OBJ/MTL/textures import and ZIP dependency persistence
+- [ ] Nested path collisions, complex material fidelity and glTF asset validation
 - [ ] Project library with multiple saved projects
 - [ ] Point-cloud tools (crop, align, measure and cleanup)
 
@@ -45,7 +46,7 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 
 ## Explicit limits in M1
 - Photograph upload does **not** create real 3D reconstruction yet.
-- glTF import is self-contained only. OBJ export doesn't include MTL; STL has no textures and is not guaranteed manifold.
+- glTF can use external resources when uploaded together and unique by filename. OBJ/MTL texture import is supported with matching files. Nested duplicate basenames are not supported. OBJ export doesn't include MTL; STL has no textures and is not guaranteed manifold.
 - The photo warnings are heuristics, not a photogrammetry success metric.
 - A local save can disappear when browser data is cleared; use ZIP export for backups.
 - CDN access is needed on first load. Hosting: GitHub Pages Deploy from a branch main/root; no Actions.

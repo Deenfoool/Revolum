@@ -25,7 +25,7 @@ async function restoreSnapshot(snapshot,notify=false){
 }
 async function undo(){if(!state.history.length||state.busy)return;const prev=state.history.pop();state.redo.push(capture());await restoreSnapshot(prev)}
 async function redo(){if(!state.redo.length||state.busy)return;const next=state.redo.pop();state.history.push(capture());await restoreSnapshot(next)}
-function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline'])$(id).disabled=b;}
+function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline'])$(id).disabled=b;}
 function renderAll(){renderScene();renderPhotos();renderInspector();renderMode()}
 function renderScene(){
   const list=$('object-list');list.replaceChildren();
@@ -85,7 +85,7 @@ function renderMode(){
   $('mode-object').classList.toggle('active',!photos);$('mode-photos').classList.toggle('active',photos);
   $('object-list').classList.toggle('hidden',photos);$('photo-side-list').classList.toggle('hidden',!photos);
   $('assets-title').textContent=photos?'PHOTO SET':'SCENE GRAPH';$('asset-count').textContent=photos?state.photos.length:engine.items.size;
-  $('import-model-btn').classList.toggle('hidden',photos);$('import-photos-btn').classList.toggle('hidden',!photos);
+  $('import-model-btn').classList.toggle('hidden',photos);$('import-model-folder-btn').classList.toggle('hidden',photos);$('import-photos-btn').classList.toggle('hidden',!photos);
   $('viewport-toolbar').classList.toggle('hidden',photos);$('viewport-section').classList.toggle('hidden',photos);
   $('photo-section').classList.toggle('hidden',!photos);$('dock').classList.toggle('hidden',photos);
   $('object-inspector').classList.toggle('hidden',photos);$('photo-inspector').classList.toggle('hidden',!photos);
@@ -95,9 +95,13 @@ function renderMode(){
   if(!photos)requestAnimationFrame(()=>engine.resize());
 }
 async function addModels(files){
-  const models=[...files].filter(f=>MODEL_EXTENSIONS.includes(f.name.toLowerCase().split('.').pop()));if(!models.length){toast('Выберите GLB, self-contained glTF, OBJ, STL или PLY','error');return}
+  if(state.busy)return;
+  const all=[...files],models=all.filter(f=>MODEL_EXTENSIONS.includes(f.name.toLowerCase().split('.').pop()));
+  if(!models.length){toast('Выберите GLB, glTF, OBJ, STL или PLY','error');return}
+  const supported=/\.(mtl|bin|jpg|jpeg|png|webp|gif|ktx2)$/i;
+  const resources=all.filter(f=>supported.test(f.name));
   setMode('object');setBusy(true);let successes=0;
-  try{for(const file of models){const before=capture();try{await engine.importFile(file);commitHistory(before);successes++}catch(error){toast(file.name+': '+error.message,'error')}}}
+  try{for(const file of models){const before=capture();try{await engine.importFile(file,{resourceFiles:resources});commitHistory(before);successes++}catch(error){toast(file.name+': '+error.message,'error')}}}
   finally{setBusy(false);renderScene();renderInspector();if(successes){queueSave();toast('Добавлено 3D-моделей: '+successes,'success')}}
 }
 async function addPhotos(files){
@@ -175,6 +179,8 @@ function bind(){
   for(const id of ['import-model-btn','empty-import-btn'])$(id).onclick=()=>$('model-file').click();
   for(const id of ['import-photos-btn','photo-import-hero','photo-add-inline','dock-add-btn'])$(id).onclick=()=>$('photo-file').click();
   $('model-file').onchange=async e=>{await addModels(e.target.files);e.target.value=''};
+  $('import-model-folder-btn').onclick=()=>$('model-folder').click();
+  $('model-folder').onchange=async e=>{await addModels(e.target.files);e.target.value=''};
   $('photo-file').onchange=async e=>{await addPhotos(e.target.files);e.target.value=''};
   $('project-file').onchange=e=>restoreFromZip(e.target.files[0]);
   $('video-import-btn').onclick=()=>$('video-file').click();
@@ -208,7 +214,7 @@ function bind(){
   area.addEventListener('dragenter',e=>{if(!e.dataTransfer.types.includes('Files'))return;e.preventDefault();dragDepth++;if(state.mode==='object')$('drop-overlay').classList.remove('hidden')});
   area.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy'}});
   area.addEventListener('dragleave',e=>{e.preventDefault();dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)$('drop-overlay').classList.add('hidden')});
-  area.addEventListener('drop',async e=>{e.preventDefault();dragDepth=0;$('drop-overlay').classList.add('hidden');const files=[...e.dataTransfer.files];const photos=files.filter(isPhoto),models=files.filter(f=>MODEL_EXTENSIONS.includes(f.name.toLowerCase().split('.').pop())),videos=files.filter(f=>/\.(mp4|webm|mov)$/i.test(f.name));if(models.length)await addModels(models);if(photos.length)await addPhotos(photos);if(videos.length)await importVideo(videos[0])});
+  area.addEventListener('drop',async e=>{e.preventDefault();dragDepth=0;$('drop-overlay').classList.add('hidden');const files=[...e.dataTransfer.files];const photos=files.filter(isPhoto),models=files.filter(f=>MODEL_EXTENSIONS.includes(f.name.toLowerCase().split('.').pop())),videos=files.filter(f=>/\.(mp4|webm|mov)$/i.test(f.name));if(models.length)await addModels(files);else if(photos.length)await addPhotos(photos);if(videos.length)await importVideo(videos[0])});
 }
 async function init(){
   try{engine=new Studio3D($('viewport'),{onSelect:()=>{renderScene();renderInspector()},onChange:()=>{if(!state.loading){renderScene();renderInspector();queueSave()}},onTransformStart:()=>{state.transformStart={before:capture(),id:engine.selectedId,transform:engine.getTransform(engine.selectedId)}},onTransformEnd:()=>{const start=state.transformStart;state.transformStart=null;if(start&&JSON.stringify(engine.getTransform(start.id))!==JSON.stringify(start.transform)){commitHistory(start.before);queueSave()}},onTransform:renderInspector,onError:m=>toast(m,'error')})}

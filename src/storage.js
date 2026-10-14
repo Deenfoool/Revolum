@@ -7,8 +7,9 @@ function zipLib(){if(!window.JSZip)throw Error('Библиотека ZIP не з
 export async function exportProjectZip(project,sceneBlob=null) {
   const zip=new (zipLib())(),objects=[],photos=[];
   for(const item of project.objects){
-    const {sourceFile,...rest}=item;const record={...rest};
+    const {sourceFile,resourceFiles,...rest}=item;const record={...rest};
     if(sourceFile){record.sourcePath='models/'+item.id+'.'+extOf(sourceFile.name);record.sourceName=sourceFile.name;record.sourceType=sourceFile.type||'';zip.file(record.sourcePath,sourceFile)}
+    record.resources=[];for(const [index,asset] of (item.resourceFiles||[]).entries()){const path='models/'+item.id+'/dep-'+index+'.'+extOf(asset.name);zip.file(path,asset);record.resources.push({path,name:asset.name,type:asset.type||''})}
     objects.push(record);
   }
   for(const item of project.photos){
@@ -31,8 +32,8 @@ export async function importProjectZip(file){
   if(manifest.format!=='revolum-project'||manifest.version!==1||!Array.isArray(manifest.objects)||!Array.isArray(manifest.photos))throw Error('Несовместимый формат проекта');
   if(manifest.objects.length>300||manifest.photos.length>500)throw Error('Превышен лимит объектов или фотографий');
   let total=0;for(const entry of Object.values(zip.files)){if(entry.dir)continue;total+=entry._data?.uncompressedSize||0;if(total>1.5*1024**3)throw Error('Архив содержит слишком много данных')}
-  const restoreFile=async row=>{if(!row.sourcePath)return null;const path=row.sourcePath;if(path.includes('..')||path.startsWith('/')||!(/^(models|photos)\/[a-zA-Z0-9._-]+$/.test(path)))throw Error('Некорректный путь в архиве');const entry=zip.file(path);if(!entry)throw Error('В архиве отсутствует '+path);const data=await entry.async('blob');return new File([data],row.sourceName||path.split('/').pop(),{type:row.sourceType||''})};
-  const objects=[];for(const row of manifest.objects){const sourceFile=await restoreFile(row);objects.push({id:row.id,name:row.name,kind:row.kind,primitive:row.primitive||null,transform:row.transform,sourceFile})}
+  const restoreFile=async row=>{if(!row.sourcePath)return null;const path=row.sourcePath;if(path.includes('..')||path.startsWith('/')||!(/^(models|photos)\/(?:[a-zA-Z0-9._-]+\/){0,3}[a-zA-Z0-9._-]+$/.test(path)))throw Error('Некорректный путь в архиве');const entry=zip.file(path);if(!entry)throw Error('В архиве отсутствует '+path);const data=await entry.async('blob');return new File([data],row.sourceName||path.split('/').pop(),{type:row.sourceType||''})};
+  const objects=[];for(const row of manifest.objects){const sourceFile=await restoreFile(row);const resourceFiles=[];if((row.resources||[]).length>200)throw Error('Слишком много связанных файлов');for(const dep of (row.resources||[])){resourceFiles.push(await restoreFile({sourcePath:dep.path,sourceName:dep.name,sourceType:dep.type}))}objects.push({id:row.id,name:row.name,kind:row.kind,primitive:row.primitive||null,transform:row.transform,sourceFile,resourceFiles})}
   const photos=[];for(const row of manifest.photos){const source=await restoreFile(row);if(!source)throw Error('Фото отсутствует');photos.push({id:row.id,file:source,width:row.width,height:row.height,flags:row.flags||[],hash:row.hash||null,mean:Number.isFinite(row.mean)?row.mean:null,sharpness:Number.isFinite(row.sharpness)?row.sharpness:null})}
   return {name:String(manifest.name||'Imported project').slice(0,56),objects,photos};
 }

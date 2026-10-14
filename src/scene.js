@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
@@ -99,13 +100,45 @@ export class Studio3D {
     const ext=extension(file.name);if(!MODEL_EXTENSIONS.includes(ext))throw Error('Формат .' + ext + ' не поддерживается');
     if(file.size>400*1024*1024)throw Error('Один файл не должен превышать 400 МБ');
     let object;
-    if(ext==='glb'||ext==='gltf') {
-      const data=ext==='glb'?await file.arrayBuffer():await file.text();
-      const parsed=await new Promise((resolve,reject)=>new GLTFLoader().parse(data,'',resolve,reject));
-      object=parsed.scene;
-    } else if(ext==='obj') {
-      object=new OBJLoader().parse(await file.text());
-      object.traverse(o=>{if(o.isMesh){o.material=new THREE.MeshStandardMaterial({color:0xabbde7,roughness:.65,side:THREE.DoubleSide});}});
+    const resourceFiles=options.resourceFiles||[];
+    const resourceMap=new Map(),resourceUrls=[];
+    for(const asset of resourceFiles){
+      const key=asset.name.toLowerCase();
+      if(resourceMap.has(key)&&resourceMap.get(key)!==asset)throw Error('В наборе два ресурса с именем '+asset.name+'. Разделите наборы моделей.');
+      resourceMap.set(key,asset);
+    }
+    const keyFromUri=uri=>{let path=uri.split(/[?#]/)[0];try{path=decodeURIComponent(path)}catch{}return path.split(/[\\/]/).pop().toLowerCase()};
+    const manager=new THREE.LoadingManager();
+    const cache=new Map();
+    manager.setURLModifier(uri=>{
+      if(/^(blob:|data:)/i.test(uri))return uri;
+      const key=keyFromUri(uri),asset=resourceMap.get(key);
+      if(!asset)return uri;
+      if(!cache.has(key)){const blobUrl=URL.createObjectURL(asset);cache.set(key,blobUrl);resourceUrls.push(blobUrl)}
+      return cache.get(key);
+    });
+    try {
+      if(ext==='glb'||ext==='gltf') {
+        const data=ext==='glb'?await file.arrayBuffer():await file.text();
+        if(ext==='gltf') {
+          let json;try{json=JSON.parse(data)}catch{throw Error('Некорректный JSON glTF')}
+          const deps=[...(json.buffers||[]),...(json.images||[])].map(x=>x.uri).filter(Boolean).filter(uri=>!/^data:/i.test(uri));
+          const missing=deps.filter(uri=>!resourceMap.has(keyFromUri(uri)));
+          if(missing.length)throw Error('Не найдены связанные файлы: '+missing.join(', ')+'. Выберите glTF, BIN и текстуры вместе.');
+        }
+        const parsed=await new Promise((resolve,reject)=>new GLTFLoader(manager).parse(data,'',resolve,reject));
+        object=parsed.scene;
+      } else if(ext==='obj') {
+        const objText=await file.text(),mtlName=objText.match(/^\s*mtllib\s+([^\r\n]+)\s*$/mi)?.[1]?.trim();
+        const loader=new OBJLoader(manager);
+        if(mtlName){
+          const mtl=resourceMap.get(keyFromUri(mtlName));
+          if(!mtl)throw Error('Для этого OBJ требуется '+mtlName+'. Выберите OBJ, MTL и текстуры вместе.');
+          const materials=new MTLLoader(manager).parse(await mtl.text(),'');
+          materials.preload();loader.setMaterials(materials);
+        }
+        object=loader.parse(objText);
+        if(!mtlName)object.traverse(o=>{if(o.isMesh){o.material=new THREE.MeshStandardMaterial({color:0xabbde7,roughness:.65,side:THREE.DoubleSide})}});
     } else if(ext==='stl') {
       const geometry=new STLLoader().parse(await file.arrayBuffer());
       object=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0xadc0ec,roughness:.58,metalness:.06,side:THREE.DoubleSide}));
@@ -122,15 +155,16 @@ export class Studio3D {
         object=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0xffffff,vertexColors,roughness:.85,side:THREE.DoubleSide}));
       }
     }
+    } catch(error) {for(const url of resourceUrls)URL.revokeObjectURL(url);throw error}
     const root=new THREE.Group();root.add(object);
-    const item=this._register(root,{...options,kind:'model',name:options.name||file.name.replace(/\.[^.]+$/,''),sourceFile:file});
+    const item=this._register(root,{...options,resourceFiles,resourceUrls,kind:'model',name:options.name||file.name.replace(/\.[^.]+$/,''),sourceFile:file});
     if(options.transform)this.applyTransform(item.id,options.transform,false);
     if(!options.silent){this.select(item.id);this.frame(item.id)}
     return item;
   }
   rename(id,name){const item=this.items.get(id);if(!item)return;item.name=(name||'Object').trim().slice(0,70);item.root.name=item.name;this.notify()}
   select(id){if(id&&!this.items.has(id))id=null;this.selectedId=id;this.transform.detach();if(id)this.transform.attach(this.items.get(id).root);this.hooks.onSelect?.(id)}
-  remove(id){const item=this.items.get(id);if(!item)return;if(this.selectedId===id)this.select(null);this.content.remove(item.root);disposeTree(item.root);this.items.delete(id);this.notify()}
+  remove(id){const item=this.items.get(id);if(!item)return;if(this.selectedId===id)this.select(null);this.content.remove(item.root);disposeTree(item.root);for(const url of item.resourceUrls||[])URL.revokeObjectURL(url);this.items.delete(id);this.notify()}
   clear(){this.select(null);for(const id of [...this.items.keys()])this.remove(id)}
   applyTransform(id,t,notify=true){const root=this.items.get(id)?.root;if(!root)return;root.position.fromArray(t.position||[0,0,0]);root.rotation.set(...(t.rotation||[0,0,0]));root.scale.fromArray(t.scale||[1,1,1]);if(notify)this.notify()}
   getTransform(id){const o=this.items.get(id)?.root;if(!o)return null;return {position:o.position.toArray(),rotation:[o.rotation.x,o.rotation.y,o.rotation.z],scale:o.scale.toArray()}}
@@ -139,7 +173,7 @@ export class Studio3D {
   view(type){const center=this.orbit.target.clone(),distance=Math.max(this.camera.position.distanceTo(center),4);const v={front:[0,0,1],right:[1,0,0],top:[0,1,.00001],perspective:[1,.7,1]}[type];if(!v)return;const direction=new THREE.Vector3(...v).normalize();this.camera.position.copy(center).addScaledVector(direction,distance);this.camera.up.set(0,1,0);this.camera.lookAt(center);this.orbit.update()}
   setTool(mode){this.transform.setMode(mode)}
   image(){return this.renderer.domElement.toDataURL('image/png')}
-  snapshot(){return [...this.items.values()].map(item=>({id:item.id,name:item.name,kind:item.kind,primitive:item.primitive||null,sourceFile:item.sourceFile||null,transform:this.getTransform(item.id)}))}
+  snapshot(){return [...this.items.values()].map(item=>({id:item.id,name:item.name,kind:item.kind,primitive:item.primitive||null,sourceFile:item.sourceFile||null,resourceFiles:item.resourceFiles||[],transform:this.getTransform(item.id)}))}
   async restore(items=[]){this.clear();for(const item of items){try{if(item.kind==='model'&&item.sourceFile)await this.importFile(item.sourceFile,{...item,silent:true});else if(item.kind==='primitive')this.addPrimitive(item.primitive,{...item,silent:true});}catch(error){this.hooks.onError?.('Не удалось восстановить '+item.name+': '+error.message)}}this.select(null);this.frame()}
   async exportScene(format) {
     if(!this.items.size)throw Error('В сцене пока нет объектов');
