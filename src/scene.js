@@ -9,6 +9,7 @@ import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+import {selectVoxelPoints,encodeCloudPly} from './pointcloud.js';
 
 export const MODEL_EXTENSIONS = ['glb','gltf','obj','stl','ply'];
 const uuid = () => crypto.randomUUID?.() || 'r-' + Date.now() + '-' + Math.random().toString(36).slice(2);
@@ -180,7 +181,29 @@ export class Studio3D {
   clear(){this.select(null);for(const id of [...this.items.keys()])this.remove(id)}
   applyTransform(id,t,notify=true){const root=this.items.get(id)?.root;if(!root)return;root.position.fromArray(t.position||[0,0,0]);root.rotation.set(...(t.rotation||[0,0,0]));root.scale.fromArray(t.scale||[1,1,1]);if(notify)this.notify()}
   getTransform(id){const o=this.items.get(id)?.root;if(!o)return null;return {position:o.position.toArray(),rotation:[o.rotation.x,o.rotation.y,o.rotation.z],scale:o.scale.toArray()}}
-  measure(id){const item=this.items.get(id);if(!item)return null;let meshes=0,triangles=0;item.root.traverse(o=>{if(o.isMesh){meshes++;const g=o.geometry;triangles+=g.index?g.index.count/3:(g.getAttribute('position')?.count||0)/3}});const box=new THREE.Box3().setFromObject(item.root);const s=box.isEmpty()?new THREE.Vector3():box.getSize(new THREE.Vector3());return {meshes,triangles:Math.round(triangles),size:s.toArray()}}
+  getPointCloud(id){
+    const item=this.items.get(id),root=item?.root;
+    return root?.children?.length===1&&root.children[0].isPoints&&item.sourceFile?.name?.toLowerCase().endsWith('.ply')?root.children[0]:null;
+  }
+  reducePointCloud(id,fraction=.025){
+    const item=this.items.get(id),cloud=this.getPointCloud(id);
+    if(!item||!cloud)throw Error('Выберите импортированное облако точек PLY');
+    const position=cloud.geometry.getAttribute('position');
+    if(!position||position.itemSize!==3)throw Error('Неверный формат координат');
+    const raw=new Float32Array(position.count*3);
+    for(let i=0;i<position.count;i++){raw[i*3]=position.getX(i);raw[i*3+1]=position.getY(i);raw[i*3+2]=position.getZ(i)}
+    const result=selectVoxelPoints(raw,{fraction});
+    if(result.remaining===result.sourceCount)throw Error('Размер вокселя слишком мал: число точек не изменилось. Выберите более сильное прореживание.');
+    const attr=cloud.geometry.getAttribute('color'),colors=attr&&attr.itemSize>=3&&attr.count===position.count?new Float32Array(raw.length):null;
+    if(colors)for(let i=0;i<position.count;i++){colors[i*3]=attr.getX(i);colors[i*3+1]=attr.getY(i);colors[i*3+2]=attr.getZ(i)}
+    const ply=encodeCloudPly(raw,result.indices,colors),points=new Float32Array(result.remaining*3),rgb=colors?new Float32Array(result.remaining*3):null;
+    for(let i=0;i<result.remaining;i++){const src=result.indices[i]*3;points.set(raw.subarray(src,src+3),i*3);if(rgb)rgb.set(colors.subarray(src,src+3),i*3)}
+    const next=new THREE.BufferGeometry();next.setAttribute('position',new THREE.BufferAttribute(points,3));if(rgb)next.setAttribute('color',new THREE.BufferAttribute(rgb,3));next.computeBoundingSphere();next.computeBoundingBox();
+    const sourceName=item.sourceFile.name.replace(/\.ply$/i,'').replace(/[^a-z0-9а-яё_-]+/gi,'-').slice(0,65)||'cloud';
+    const original=cloud.geometry;cloud.geometry=next;item.sourceFile=new File([ply],sourceName+'-voxel.ply',{type:'application/octet-stream'});item.method='voxel-filtered';original.dispose();this.notify();
+    return result;
+  }
+  measure(id){const item=this.items.get(id);if(!item)return null;let meshes=0,triangles=0,points=0;item.root.traverse(o=>{if(o.isMesh){meshes++;const g=o.geometry;triangles+=g.index?g.index.count/3:(g.getAttribute('position')?.count||0)/3}else if(o.isPoints){points+=o.geometry.getAttribute('position')?.count||0}});const box=new THREE.Box3().setFromObject(item.root);const s=box.isEmpty()?new THREE.Vector3():box.getSize(new THREE.Vector3());return {meshes,triangles:Math.round(triangles),points,size:s.toArray()}}
   frame(id=null){const root=id?this.items.get(id)?.root:this.content;if(!root)return;const box=new THREE.Box3().setFromObject(root);if(box.isEmpty())return;const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());const distance=Math.max(size.length()*1.1,.65);const direction=this.camera.position.clone().sub(this.orbit.target).normalize();this.orbit.target.copy(center);this.camera.position.copy(center).addScaledVector(direction,distance);this.camera.near=Math.max(.005,distance/2000);this.camera.far=Math.max(300,distance*20);this.camera.updateProjectionMatrix();this.orbit.update()}
   view(type){const center=this.orbit.target.clone(),distance=Math.max(this.camera.position.distanceTo(center),4);const v={front:[0,0,1],right:[1,0,0],top:[0,1,.00001],perspective:[1,.7,1]}[type];if(!v)return;const direction=new THREE.Vector3(...v).normalize();this.camera.position.copy(center).addScaledVector(direction,distance);this.camera.up.set(0,1,0);this.camera.lookAt(center);this.orbit.update()}
   setTool(mode){this.transform.setMode(mode)}

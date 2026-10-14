@@ -27,7 +27,8 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [ ] Nested path collisions, complex material fidelity and glTF asset validation
 - [x] Local multi-project library (12 named IndexedDB snapshots; separate autosave slot)
 - [ ] Project quotas, deduplication and storage-usage view
-- [ ] Point-cloud tools (crop, align, measure and cleanup)
+- [x] Point-cloud point count and voxel downsample for imported PLY; edited binary PLY source persists in project and Undo/Redo
+- [ ] Point-cloud axis crop, outlier cleanup and non-destructive alignment
 
 ## M3 — Browser-first reconstruction (no mandatory server)
 - [x] Browser ONNX relative-depth inference (Depth Anything V2 Small q8/WASM) in a dedicated Worker
