@@ -2,6 +2,7 @@
 // Full browser-only SfM + differentiable WebGPU Gaussian splat training.
 // Local import is intentional: no remote reconstruction service or CDN at runtime.
 import {createSession,camPosition} from '../vendor/splatjs/src/index.js';
+import {sfmDiagnostics,scanBundle} from './scan-package.js';
 
 export function validateCapture(files){
   if(!Array.isArray(files)||files.length<8)throw Error('Для многокадрового скана нужно минимум 8 перекрывающихся фотографий');
@@ -40,7 +41,7 @@ export class MultiViewReconstruction{
   constructor({canvas,onUpdate=()=>{},onReady=()=>{},onComplete=()=>{},onError=()=>{}}){
     this.canvas=canvas;this.hooks={onUpdate,onReady,onComplete,onError};
     this.session=null;this.controller=null;this.phase='idle';this.pending=false;
-    this.unsub=[];this.revision=0;this.orbitState=null;
+    this.unsub=[];this.revision=0;this.orbitState=null;this.report=null;
   }
   emit(message,extra={}){this.hooks.onUpdate({message,phase:this.phase,...extra})}
   get ready(){return !!this.session?.trainer}
@@ -96,12 +97,12 @@ export class MultiViewReconstruction{
     this.session.view.setCamera({...state.meta,R,t});
   }
   async run(files,{maxIters=12000,initTarget=20000}={}){
-    if(this.pending||this.phase==='training')throw Error('Реконструкция уже запущена');
+    if(this.pending||this.ready)throw Error('Сначала завершите или сбросьте предыдущую реконструкцию');
     if(!navigator.gpu)throw Error('Для обучаемого Gaussian Splatting требуется WebGPU. Включите аппаратное ускорение и откройте сайт в совместимом браузере.');
     validateCapture(files);
     await this.reset();
     const revision=++this.revision;
-    this.controller=new AbortController();this.pending=true;this.phase='decode';
+    this.controller=new AbortController();this.pending=true;this.phase='decode';this.report=null;
     const check=()=>{if(this.controller?.signal.aborted||revision!==this.revision)throw Error('Реконструкция отменена')};
     const session=createSession({
       maxIters:Math.max(1000,Math.min(100000,Math.floor(maxIters))),
@@ -126,7 +127,7 @@ export class MultiViewReconstruction{
         this.phase='complete';this.emit('Обучение завершено: '+e.iter.toLocaleString('ru-RU')+' итераций, '+e.splats.toLocaleString('ru-RU')+' Gaussian Splats.');
         this.hooks.onComplete(e);
       }else if(e.kind==='device-lost'){
-        this.phase='error';this.hooks.onError(Error('WebGPU устройство отключилось. Экспорт обучаемой сцены может быть недоступен.'));
+        this.phase='error';this.hooks.onError(Error('WebGPU устройство отключилось. Экспорт обучаемой сцены может быть недоступен.'),this.report);
       }
     }));
     try{
@@ -134,7 +135,9 @@ export class MultiViewReconstruction{
       await session.load(files);check();
       this.phase='solve';this.emit('Автоматическое сопоставление признаков и расчёт положений камер…');
       const recon=await session.solve({signal:this.controller.signal});check();
-      if(recon.cams.length<3||recon.points.length<12)throw Error('Сопоставлено недостаточно камер/точек ('+recon.cams.length+' камер, '+recon.points.length+' точек). Снимайте неподвижную сцену с большим перекрытием и параллаксом.');
+      this.report=sfmDiagnostics(recon,session.frames);
+      const minCameras=Math.max(4,Math.ceil(files.length*.5));
+      if(recon.cams.length<minCameras||recon.points.length<50)throw Error('Недостаточная регистрация: '+recon.cams.length+'/'+files.length+' камер и '+recon.points.length+' общих точек. Для обучения требуется минимум '+minCameras+' камер и 50 точек. Добавьте ракурсы с перекрытием и параллаксом.');
       this.emit('SfM завершён: '+recon.cams.length+'/'+files.length+' камер, '+recon.points.length+' точек.',{registered:recon.cams.length,points:recon.points.length});
       this.phase='seed';this.emit('Создание начальных Gaussian-примитивов и настройка GPU…');
       await session.seed();check();
@@ -143,14 +146,15 @@ export class MultiViewReconstruction{
       session.view.attach(this.canvas);
       this.selectCamera(0);
       this.pending=false;this.phase='ready';
-      this.hooks.onReady({registered:recon.cams.length,input:files.length,points:recon.points.length,cameras:session.trainer.camMeta.map((c,i)=>({index:i,imageIndex:c.imgIdx,name:files[c.imgIdx]?.name||'Camera '+(i+1)}))});
+      this.hooks.onReady({registered:recon.cams.length,input:files.length,points:recon.points.length,report:this.report,cameras:session.trainer.camMeta.map((c,i)=>({index:i,imageIndex:c.imgIdx,name:session.frames[c.imgIdx]?.name||'Camera '+(i+1)}))});
+      check();this.phase='training';
       this.emit('Камеры рассчитаны. Начинаем настоящее WebGPU-обучение Gaussian Splats…');
-      this.phase='training';session.start();
+      session.start();
       return recon;
     }catch(error){
       if(revision===this.revision){
         this.phase='error';this.emit(error?.message||String(error));
-        this.hooks.onError(error);
+        this.hooks.onError(error,this.report);
         this.pending=false;
         await this.reset(false);
       }
@@ -176,6 +180,13 @@ export class MultiViewReconstruction{
     if(!this.ready)throw Error('Нечего экспортировать: сначала выполните расчёт камер и инициализацию обучения');
     return this.session.exportPlyBlob();
   }
+  async exportPackage(name,zipConstructor){
+    if(!this.ready)throw Error('Сначала выполните SfM и инициализацию 3DGS');
+    if(this.phase==='training')this.pause(); // freeze the exact GPU result exported to the bundle
+    const splat=await this.exportPly();
+    const cloud=this.exportSparse(),cameras=this.exportCameras();
+    return scanBundle({name,splat,cloud,cameras,diagnostics:this.report,zipConstructor});
+  }
   exportSparse(){
     if(!this.session?.recon)throw Error('Сначала дождитесь расчёта камер');
     return sparsePly(this.session.recon);
@@ -189,6 +200,6 @@ export class MultiViewReconstruction{
     this.controller?.abort();this.controller=null;
     this.session?.pause();for(const off of this.unsub)off();this.unsub=[];
     try{this.session?.dispose()}catch(e){console.warn('Splat.js disposal:',e)}
-    this.session=null;this.orbitState=null;this.pending=false;this.phase='idle';
+    this.session=null;this.orbitState=null;this.report=null;this.pending=false;this.phase='idle';
   }
 }

@@ -8,7 +8,7 @@ const icons=()=>window.lucide?.createIcons();
 const uid=()=>crypto.randomUUID?.()||'p'+Date.now()+Math.random().toString(36).slice(2);
 const state={name:'Untitled scan',photos:[],selectedPhotoId:null,mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve(),importController:null,depthRunning:false};
 let engine;
-let videoController=null,cameraStream=null,multiview=null,mvPending=false;
+let videoController=null,cameraStream=null,multiview=null,mvPending=false,mvCancelled=false,mvExported=false,mvPackaging=false,mvJobSettled=true;
 function toast(message,type='info'){const item=document.createElement('div');item.className='toast '+type;item.textContent=message;$('toast-stack').appendChild(item);setTimeout(()=>item.remove(),5300)}
 const project=()=>({name:state.name,objects:engine.snapshot(),photos:state.photos.map(({url,...p})=>({...p}))});
 function status(label){$('save-state').innerHTML='<i data-lucide="hard-drive"></i> '+label;icons()}
@@ -25,8 +25,8 @@ async function restoreSnapshot(snapshot,notify=false){
     renderAll();if(notify)toast('Проект восстановлен','success');
   }finally{state.loading=false;queueSave()}
 }
-async function undo(){if(!state.history.length||state.busy)return;const prev=state.history.pop();state.redo.push(capture());await restoreSnapshot(prev)}
-async function redo(){if(!state.redo.length||state.busy)return;const next=state.redo.pop();state.history.push(capture());await restoreSnapshot(next)}
+async function undo(){if(!state.history.length||state.busy||!canDiscardSplat())return;const prev=state.history.pop();state.redo.push(capture());await restoreSnapshot(prev)}
+async function redo(){if(!state.redo.length||state.busy||!canDiscardSplat())return;const next=state.redo.pop();state.history.push(capture());await restoreSnapshot(next)}
 function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn','new-btn','restore-btn','open-zip-btn','add-shape','delete-object','depth-quality','depth-strength'])$(id).disabled=b;$('reconstruct-selected').disabled=b||!state.selectedPhotoId;$('mv-start').disabled=b||state.photos.length<8||!!multiview?.ready||mvPending;$('mv-preset').disabled=b||!!multiview?.ready||mvPending;}
 function beginImport(label,total){
   state.importController=new AbortController();setBusy(true);
@@ -72,7 +72,7 @@ function renderInspector(){
   $('detail-size').textContent=info.size.map(n=>n.toFixed(2)).join(' × ');
 }
 function clearPhotos(){for(const photo of state.photos)URL.revokeObjectURL(photo.url);state.photos=[];state.selectedPhotoId=null}
-function removePhoto(id){const before=capture();const index=state.photos.findIndex(p=>p.id===id);if(index<0)return;commitHistory(before);URL.revokeObjectURL(state.photos[index].url);state.photos.splice(index,1);if(state.selectedPhotoId===id)state.selectedPhotoId=state.photos[Math.min(index,state.photos.length-1)]?.id||null;renderPhotos();queueSave()}
+function removePhoto(id){if(state.busy){toast('Дождитесь завершения текущей операции');return}const before=capture();const index=state.photos.findIndex(p=>p.id===id);if(index<0)return;commitHistory(before);URL.revokeObjectURL(state.photos[index].url);state.photos.splice(index,1);if(state.selectedPhotoId===id)state.selectedPhotoId=state.photos[Math.min(index,state.photos.length-1)]?.id||null;renderPhotos();queueSave()}
 function renderPhotos(){
   $('dock-photo-count').textContent=state.photos.length;$('photo-stat-count').textContent=String(state.photos.length).padStart(2,'0');$('photo-count-header').textContent='('+state.photos.length+')';
   $('photo-stat-resolution').textContent=String(state.photos.filter(p=>p.flags.some(f=>f.includes('разрешение'))).length).padStart(2,'0');
@@ -88,7 +88,7 @@ function renderPhotos(){
   if(!state.photos.length){film.innerHTML='<span class="filmstrip-empty">Добавьте фотографии для нового скана <i data-lucide="arrow-right"></i></span>';grid.innerHTML='<div class="photo-empty"><i data-lucide="image-plus"></i><strong>Пока нет фотографий</strong><span>JPEG, PNG, WebP или HEIC (если браузер поддерживает декодирование)</span></div>';side.innerHTML='<p class="list-empty">Начните с фотографий объекта или помещения.</p>'}
   for(const p of state.photos){
     const thumb=document.createElement('img');thumb.className='film-thumb';thumb.src=p.url;thumb.alt=p.file.name;thumb.title=p.file.name;thumb.loading='lazy';thumb.onclick=()=>setMode('photos');film.append(thumb);
-    const issues=issueMap.get(p.id);const tile=document.createElement('div');tile.className='photo-tile'+(issues.length?' flag':'')+(p.id===state.selectedPhotoId?' selected':'');tile.tabIndex=0;tile.role='button';tile.setAttribute('aria-label','Показать сведения о '+p.file.name);tile.onclick=()=>{state.selectedPhotoId=p.id;renderPhotos()};tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();state.selectedPhotoId=p.id;renderPhotos()}};
+    const issues=issueMap.get(p.id);const tile=document.createElement('div');tile.className='photo-tile'+(issues.length?' flag':'')+(p.id===state.selectedPhotoId?' selected':'');tile.tabIndex=0;tile.role='button';tile.setAttribute('aria-label','Показать сведения о '+p.file.name);tile.onclick=()=>{if(state.busy)return;state.selectedPhotoId=p.id;renderPhotos()};tile.onkeydown=e=>{if(e.target===tile&&(e.key==='Enter'||e.key===' ')){e.preventDefault();state.selectedPhotoId=p.id;renderPhotos()}};
     const image=document.createElement('img');image.src=p.url;image.alt=p.file.name;image.loading='lazy';tile.append(image);
     const btn=document.createElement('button');btn.type='button';btn.className='tile-remove';btn.title='Удалить фото';btn.setAttribute('aria-label','Удалить '+p.file.name);btn.innerHTML='<i data-lucide="x"></i>';btn.onclick=e=>{e.stopPropagation();removePhoto(p.id)};tile.append(btn);
     const info=document.createElement('div');info.className='tile-info';const strong=document.createElement('strong');strong.textContent=p.file.name;strong.title=p.file.name;
@@ -164,6 +164,35 @@ async function addPhotos(files){
     finishImport();if(signal.aborted)toast('Импорт остановлен. Уже добавленные фотографии сохранены.');
   }
 }
+function canDiscardSplat(){return !(multiview?.ready&&!mvExported)||confirm('Текущий обученный результат Gaussian Splatting не выгружен. Продолжить без сохранения PLY/ZIP?')}
+function renderMultiviewReport(report){
+  const panel=$('mv-diagnostics');panel.replaceChildren();
+  if(!report){panel.classList.add('hidden');return}
+  panel.classList.remove('hidden');
+  const headline=document.createElement('strong');headline.textContent='SfM · '+report.registered+'/'+report.input+' камер ('+report.registrationRate+'%) · '+report.sparsePoints.toLocaleString('ru-RU')+' общих точек';panel.append(headline);
+  if(Number.isFinite(report.rmsBA)){const metric=document.createElement('span');metric.textContent='RMS BA: '+report.rmsBA.toFixed(2)+' px';panel.append(metric)}
+  if(report.unregistered?.length){
+    const missing=document.createElement('p');missing.textContent='Не зарегистрированы: '+report.unregistered.map(f=>f.name).join(', ');panel.append(missing)
+  }else{const note=document.createElement('p');note.textContent='Все кадры зарегистрированы. Масштаб реконструкции относительный.';panel.append(note)}
+}
+function cancelMultiview(){
+  mvCancelled=true;multiview?.controller?.abort();
+  $('mv-status').textContent='Отмена запрошена. Текущая операция завершится перед освобождением ресурсов.';
+  $('mv-cancel').disabled=true;
+}
+async function exportMultiviewBundle(){
+  if(!multiview?.ready||mvPackaging||state.busy)return;
+  if(!window.JSZip){toast('Не удалось загрузить JSZip для пакета скана','error');return}
+  mvPackaging=true;setBusy(true);multiviewButtons();
+  $('mv-status').textContent='Считывание GPU и подготовка пакета. Обучение ставится на паузу…';
+  try{
+    const {blob,filename}=await multiview.exportPackage(state.name,window.JSZip);
+    download(blob,filename);mvExported=true;
+    $('mv-status').textContent='Пакет выгружен. Обучение на паузе; при необходимости нажмите «Продолжить».';
+    toast('Сохранён пакет скана: PLY + облако + камеры + отчёт','success');
+  }catch(error){toast('Не удалось сохранить скан: '+error.message,'error');$('mv-status').textContent='Ошибка пакета: '+error.message}
+  finally{mvPackaging=false;setBusy(false);multiviewButtons()}
+}
 function multiviewButtons(){
   const ready=!!multiview?.ready,phase=multiview?.phase||'idle';
   $('mv-pause').classList.toggle('hidden',phase!=='training');
@@ -171,7 +200,10 @@ function multiviewButtons(){
   $('mv-finish').classList.toggle('hidden',phase!=='training'&&phase!=='paused');
   $('mv-cancel').classList.toggle('hidden',!mvPending);
   $('mv-new').classList.toggle('hidden',!ready&&!mvPending);
-  for(const id of ['mv-export-ply','mv-export-cloud','mv-export-cameras','mv-cloud-to-scene'])$(id).disabled=!ready;
+  $('mv-new').disabled=mvPackaging;
+  $('mv-pause').disabled=mvPackaging;$('mv-resume').disabled=mvPackaging;$('mv-finish').disabled=mvPackaging;
+  for(const id of ['mv-export-ply','mv-export-cloud','mv-export-cameras','mv-cloud-to-scene','mv-export-bundle'])$(id).disabled=!ready||mvPackaging;
+  $('mv-backup-warning').classList.toggle('hidden',!ready||mvExported);
   $('mv-start').disabled=state.busy||mvPending||ready||state.photos.length<8||state.photos.length>120;
   $('mv-preset').disabled=state.busy||mvPending||ready;
   icons();
@@ -179,6 +211,8 @@ function multiviewButtons(){
 function resetMultiviewUi(){
   $('mv-viewer').classList.add('hidden');$('mv-camera').replaceChildren();
   $('mv-progress').classList.add('hidden');$('mv-progress').value=0;
+  $('mv-diagnostics').replaceChildren();$('mv-diagnostics').classList.add('hidden');
+  mvExported=false;mvPackaging=false;
   $('mv-stats').textContent='SfM';$('mv-status').textContent='Нужен WebGPU и 8–120 перекрывающихся фотографий одной неподвижной сцены.';
   multiviewButtons();
 }
@@ -187,11 +221,12 @@ async function startMultiview(){
   const photos=state.photos.map(p=>p.file);
   if(photos.length<8||photos.length>120){toast('Для многокадрового скана требуется от 8 до 120 кадров','error');return}
   if(!navigator.gpu){$('mv-status').textContent='WebGPU не обнаружен. Включите аппаратное ускорение или откройте сайт в совместимом браузере.';toast('WebGPU недоступен: настоящий тренер Gaussian Splats не может запуститься','error');return}
-  mvPending=true;setBusy(true);multiviewButtons();
+  mvPending=true;mvJobSettled=false;mvCancelled=false;mvExported=false;$('mv-cancel').disabled=false;setBusy(true);multiviewButtons();
   $('mv-progress').classList.remove('hidden');$('mv-progress').value=0;
   $('mv-status').textContent='Загрузка локального SfM/3DGS движка…';
   try{
     const {MultiViewReconstruction}=await import('./multiview.js');
+    if(mvCancelled)throw Error('Реконструкция отменена до запуска движка');
     multiview=new MultiViewReconstruction({
       canvas:$('mv-canvas'),
       onUpdate:e=>{
@@ -207,21 +242,24 @@ async function startMultiview(){
         $('mv-viewer').classList.remove('hidden');$('mv-camera').replaceChildren();
         for(const c of e.cameras){const option=document.createElement('option');option.value=String(c.index);option.textContent=(c.index+1)+' · '+c.name;$('mv-camera').append(option)}
         $('mv-stats').textContent='SfM: '+e.registered+'/'+e.input+' камер · '+e.points.toLocaleString('ru-RU')+' общих 3D-точек';
+        renderMultiviewReport(e.report);
         mvPending=false;setBusy(false);multiviewButtons();
         toast('Рассчитаны камеры. Настоящее обучение 3DGS запущено.','success');
       },
       onComplete:e=>{multiviewButtons();$('mv-progress').value=100;toast('Обучение Gaussian Splats завершено. Можно экспортировать PLY.','success')},
-      onError:e=>{mvPending=false;setBusy(false);multiviewButtons();toast('Многокадровая реконструкция: '+(e?.message||e),'error')}
+      onError:(e,report)=>{renderMultiviewReport(report);$('mv-status').textContent='Ошибка многокадровой реконструкции: '+(e?.message||e);if(mvJobSettled){toast('Многокадровая реконструкция: '+(e?.message||e),'error');multiviewButtons()}}
     });
     const preset=Number($('mv-preset').value);
     await multiview.run(photos,{maxIters:preset,initTarget:preset<=4000?6000:preset<=12000?20000:40000});
+    mvJobSettled=true;
   }catch(error){
     $('mv-status').textContent='Ошибка: '+error.message;
     toast('SfM / Gaussian Splatting: '+error.message,'error');
-  }finally{mvPending=false;setBusy(false);multiviewButtons()}
+  }finally{mvJobSettled=true;mvPending=false;mvCancelled=false;setBusy(false);multiviewButtons()}
 }
 async function newMultiview(){
-  if(mvPending){multiview?.controller?.abort();$('mv-status').textContent='Запрошена отмена текущего расчёта…';return}
+  if(mvPending){cancelMultiview();return}
+  if(multiview?.ready&&!mvExported&&!confirm('Обученный 3DGS результат ещё не экспортирован. Сбросить его без сохранения?'))return;
   try{await multiview?.reset()}catch(e){console.warn(e)}
   multiview=null;resetMultiviewUi();
 }
@@ -231,7 +269,7 @@ async function downloadMultiview(kind){
   if(!map[kind])return;
   const name=safeFilename(state.name),suffix={ply:'-gaussian-splats.ply',cloud:'-sparse-cloud.ply',cameras:'-cameras.json'}[kind];
   const button=$('mv-export-'+kind);button.disabled=true;
-  try{const blob=await map[kind]();download(blob,name+suffix);toast('Файл '+suffix+' подготовлен к скачиванию','success')}
+  try{const blob=await map[kind]();download(blob,name+suffix);if(kind==='ply')mvExported=true;multiviewButtons();toast('Файл '+suffix+' подготовлен к скачиванию','success')}
   catch(error){toast('Экспорт: '+error.message,'error')}
   finally{button.disabled=!multiview?.ready}
 }
@@ -324,7 +362,7 @@ async function doExport(format){if(state.busy)return;$('export-dialog').close();
   }else{download(await engine.exportScene(format),name+'.'+format)}
   toast('Файл подготовлен к скачиванию','success');
 }catch(error){toast('Ошибка экспорта: '+error.message,'error')}finally{setBusy(false)}}
-async function restoreFromZip(file){if(!file)return;setBusy(true);try{const data=await importProjectZip(file);commitHistory();await restoreSnapshot(data,true)}catch(error){toast('Не удалось открыть проект: '+error.message,'error')}finally{setBusy(false);$('project-file').value=''}}
+async function restoreFromZip(file){if(!file)return;setBusy(true);try{const data=await importProjectZip(file);if(!canDiscardSplat())return;commitHistory();await restoreSnapshot(data,true)}catch(error){toast('Не удалось открыть проект: '+error.message,'error')}finally{setBusy(false);$('project-file').value=''}}
 async function renderLibrary(){
  const list=$('library-list');list.replaceChildren();
  try{
@@ -338,7 +376,7 @@ async function renderLibrary(){
      info.append(name,meta);row.append(info);
      const open=document.createElement('button');open.type='button';open.className='btn btn-outline';open.innerHTML='<i data-lucide="folder-open"></i> Открыть';
      open.onclick=async()=>{
-       if(state.busy||!confirm('Открыть «'+item.name+'»? Текущий проект будет заменён, автосохранение обновится.'))return;
+       if(state.busy||!confirm('Открыть «'+item.name+'»? Текущий проект будет заменён, автосохранение обновится.')||!canDiscardSplat())return;
        setBusy(true);try{
          const snapshot=await loadNamedProject(item.id);if(!snapshot)throw Error('Проект не найден');
          commitHistory();await restoreSnapshot(snapshot,true);$('library-dialog').close();
@@ -359,7 +397,7 @@ async function saveLibraryCopy(){
  try{const saved=await saveNamedProject(project());await renderLibrary();toast('Сохранена копия «'+saved.name+'»','success')}
  catch(error){toast('Ошибка сохранения: '+error.message,'error')}finally{setBusy(false)}
 }
-function confirmReset(){if(!confirm('Очистить текущую сцену и фотосет? Сначала сохраните ZIP, если нужна резервная копия.'))return;if(multiview){multiview.reset().catch(console.warn);multiview=null;resetMultiviewUi()}commitHistory();state.loading=true;engine.clear();clearPhotos();state.name='Untitled scan';$('project-name').value=state.name;state.loading=false;setMode('object');renderAll();queueSave()}
+function confirmReset(){if(!confirm('Очистить текущую сцену и фотосет? Сначала сохраните ZIP, если нужна резервная копия.')||!canDiscardSplat())return;if(multiview){multiview.reset().catch(console.warn);multiview=null;resetMultiviewUi()}commitHistory();state.loading=true;engine.clear();clearPhotos();state.name='Untitled scan';$('project-name').value=state.name;state.loading=false;setMode('object');renderAll();queueSave()}
 function removeObject(){if(!engine.selectedId)return;commitHistory();engine.remove(engine.selectedId);renderInspector();queueSave()}
 function demo(){state.loading=true;const knot=engine.addPrimitive('knot',{name:'Demo / Sculpted form',silent:true});engine.applyTransform(knot.id,{position:[0,.18,0],rotation:[.3,.2,0],scale:[1,1,1]},false);const base=engine.addPrimitive('cylinder',{name:'Demo / Pedestal',silent:true});engine.applyTransform(base.id,{position:[0,-1.06,0],rotation:[0,0,0],scale:[1.55,.13,1.55]},false);engine.select(knot.id);engine.frame();state.loading=false;renderAll()}
 function keyboard(event){
@@ -388,7 +426,8 @@ function bind(){
   $('library-save-btn').onclick=saveLibraryCopy;
   $('reconstruct-selected').onclick=reconstructSelectedPhoto;
   $('mv-start').onclick=startMultiview;
-  $('mv-cancel').onclick=()=>{multiview?.controller?.abort();$('mv-status').textContent='Отмена запрошена. Завершаем текущую операцию…'};
+  $('mv-cancel').onclick=cancelMultiview;
+  $('mv-export-bundle').onclick=exportMultiviewBundle;
   $('mv-new').onclick=newMultiview;
   $('mv-pause').onclick=()=>{multiview?.pause();multiviewButtons()};
   $('mv-resume').onclick=()=>{try{multiview?.resume();multiviewButtons()}catch(e){toast(e.message,'error')}};
@@ -413,7 +452,7 @@ function bind(){
   $('camera-shot-btn').onclick=shootCamera;
   $('open-zip-btn').onclick=()=>$('project-file').click();
   $('project-name').onchange=e=>{const name=e.target.value.trim()||'Untitled scan';if(name!==state.name){commitHistory();state.name=name;e.target.value=name;queueSave()}};
-  $('new-btn').onclick=confirmReset;$('save-btn').onclick=()=>saveNow();$('restore-btn').onclick=async()=>{try{const record=await loadLocal();if(!record){toast('В этом браузере ещё нет сохранённого проекта');return}if(confirm('Открыть локальную копию? Текущие несохранённые изменения будут заменены.')){commitHistory();await restoreSnapshot(record.project,true)}}catch(error){toast(error.message,'error')}};
+  $('new-btn').onclick=confirmReset;$('save-btn').onclick=()=>saveNow();$('restore-btn').onclick=async()=>{try{const record=await loadLocal();if(!record){toast('В этом браузере ещё нет сохранённого проекта');return}if(confirm('Открыть локальную копию? Текущие несохранённые изменения будут заменены.')&&canDiscardSplat()){commitHistory();await restoreSnapshot(record.project,true)}}catch(error){toast(error.message,'error')}};
   $('tool-move').onclick=()=>setTool('translate');$('tool-rotate').onclick=()=>setTool('rotate');$('tool-scale').onclick=()=>setTool('scale');$('add-shape').onclick=chooseShape;
   $('delete-object').onclick=removeObject;$('inspector-delete').onclick=removeObject;
   $('frame-btn').onclick=()=>engine.frame(engine.selectedId);
@@ -430,6 +469,7 @@ function bind(){
   document.querySelectorAll('[data-export]').forEach(btn=>btn.onclick=()=>doExport(btn.dataset.export));
   $('analyze-btn').onclick=()=>{renderPhotos();toast('Отчёт обновлён. Оценка экспозиции приблизительная.','success')};
   document.addEventListener('keydown',keyboard);
+  window.addEventListener('beforeunload',event=>{if(mvPending||(multiview?.ready&&!mvExported)){event.preventDefault();event.returnValue=''}});
   const area=$('editor-area');let dragDepth=0;
   area.addEventListener('dragenter',e=>{if(!e.dataTransfer.types.includes('Files'))return;e.preventDefault();dragDepth++;if(state.mode==='object')$('drop-overlay').classList.remove('hidden')});
   area.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy'}});

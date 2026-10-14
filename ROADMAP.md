@@ -35,6 +35,11 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [x] True WebGPU differentiable 3DGS optimization and PLY export (anisotropic Gaussian primitives, not fake point sprites)
 - [x] Live splat preview, solved camera selector, orbit, pause/resume/finish, stage/metric reporting
 - [x] Sparse colored SfM point-cloud PLY and camera JSON exports, point-cloud import to Object Studio
+- [x] Per-scan SfM registration diagnostics (missing image names, coverage, sparse-point count, optional BA error)
+- [x] Minimum registration/landmark quality gate before GPU training
+- [x] Downloadable scan ZIP snapshot (validated Gaussian PLY, sparse cloud, cameras, diagnostics)
+- [x] Cancel-before-load guard, export/data-loss warning and UI operation locks during bundle creation
+- [ ] Persist and restore optimizer/trainer state (current ZIP is an export snapshot, not a resumable training state)
 - [ ] Dense polygonal MVS mesh extraction / watertight reconstruction from overlapping photos
 - [ ] Quantitative browser smoke test with a real ONNX inference and model/GLB roundtrip on published Pages
 - [x] Local session pipeline with progress, cancellation, GPU device loss and stage/metric events
@@ -42,7 +47,7 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [ ] COLMAP SfM/MVS mesh reconstruction
 - [ ] Texture baking, masking and reconstruction diagnostics
 - [x] Gaussian Splatting training and preview via vendored Splat.js (requires WebGPU)
-- [ ] WebGPU browser smoke test on real photo sets and PLY visual/format checks
+- [ ] WebGPU browser smoke test on real photo sets and exported PLY visual/format checks (structure/header checks implemented)
 - [ ] GPU cloud engine as later optional deployment
 
 ## M4 — Production workflows

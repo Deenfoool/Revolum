@@ -94,3 +94,13 @@
 .multiview-panel .reconstruction-disclaimer code{color:#c8e8db}
 @media(max-width:850px){.multiview-panel{padding:15px}.mv-count{flex-basis:100%}.mv-view-header{align-items:flex-start;flex-wrap:wrap}}
 @media(max-width:580px){.multiview-panel{padding:13px}.multiview-controls .btn{white-space:normal}.mv-exports .btn{flex:1;white-space:normal}.mv-view-header label{width:100%;justify-content:space-between}.multiview-panel .reconstruction-heading h3{font-size:15px}}
+
+/* M3 reliability: registered-camera report and explicit 3DGS backup state. */
+.mv-diagnostics{display:flex;gap:8px 14px;align-items:center;flex-wrap:wrap;padding:12px 14px;margin:12px 0;background:#1b2f34;border:1px solid #43635f;border-radius:8px;color:#c2e3d8;font-size:11px;line-height:1.65}
+.mv-diagnostics strong{font-weight:780;color:#e6fff1}
+.mv-diagnostics>span{font-variant-numeric:tabular-nums;color:#9fc9bc}
+.mv-diagnostics p{flex-basis:100%;margin:0;color:#a9bdb6;overflow-wrap:anywhere}
+.mv-backup-warning{margin:13px 0 0;padding:11px 13px;border:1px solid #866e47;background:#342a1e;border-radius:7px;color:#edc792;font-size:10px;line-height:1.7}
+.mv-exports .btn-primary{background:#9bdfc1;color:#112b24;border-color:#b4f2d8}
+.mv-exports .btn-primary:hover{background:#c0f4dd;color:#0e211b}
+.mv-exports button:disabled{opacity:.45}

@@ -37,3 +37,17 @@ test('relative import and worker paths in vendored source exist',()=>{
   }
  }
 });
+
+test('SfM diagnostics and export/backup controls are wired',()=>{
+ const html=read('index.html'),main=read('src/main.js'),adapter=read('src/multiview.js');
+ for(const id of ['mv-diagnostics','mv-backup-warning','mv-export-bundle']){
+  assert.match(html,new RegExp('id="'+id+'"'));
+ }
+ assert.match(main,/renderMultiviewReport\(/);
+ assert.match(main,/exportMultiviewBundle\(/);
+ assert.match(main,/beforeunload/);
+ assert.match(adapter,/const minCameras=Math\.max\(4,Math\.ceil\(files\.length\*\.5\)\)/);
+ assert.match(adapter,/exportPackage\(name,zipConstructor\)/);
+ assert.match(adapter,/this\.report=sfmDiagnostics\(/);
+ assert.ok(existsSync(resolve(root,'src/scan-package.js')));
+});
