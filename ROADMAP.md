@@ -31,13 +31,18 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [x] Browser ONNX relative-depth inference (Depth Anything V2 Small q8/WASM) in a dedicated Worker
 - [x] Generate triangulated textured 2.5D Mesh from a selected photo and serialize to GLB in Object Studio
 - [x] Reconstruct/cancel UI, model download status and depth-map preview
-- [ ] Real multi-view camera registration (SfM), dense geometry fusion (MVS), and proper mesh extraction from overlapping photos
+- [x] Multi-view automatic camera registration and triangulation (SfM with bundled Splat.js)
+- [x] True WebGPU differentiable 3DGS optimization and PLY export (anisotropic Gaussian primitives, not fake point sprites)
+- [x] Live splat preview, solved camera selector, orbit, pause/resume/finish, stage/metric reporting
+- [x] Sparse colored SfM point-cloud PLY and camera JSON exports, point-cloud import to Object Studio
+- [ ] Dense polygonal MVS mesh extraction / watertight reconstruction from overlapping photos
 - [ ] Quantitative browser smoke test with a real ONNX inference and model/GLB roundtrip on published Pages
-- [ ] Define optional full reconstruction job protocol and progress events
+- [x] Local session pipeline with progress, cancellation, GPU device loss and stage/metric events
 - [ ] Optional local engine connector for GPU-grade multi-view workflows
 - [ ] COLMAP SfM/MVS mesh reconstruction
 - [ ] Texture baking, masking and reconstruction diagnostics
-- [ ] Gaussian Splatting training and preview
+- [x] Gaussian Splatting training and preview via vendored Splat.js (requires WebGPU)
+- [ ] WebGPU browser smoke test on real photo sets and PLY visual/format checks
 - [ ] GPU cloud engine as later optional deployment
 
 ## M4 — Production workflows
@@ -53,8 +58,8 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - Similarity and sharpness indicators are approximate warnings, not certainty about overlap or success of SfM.
 
 ## Explicit limits in M1
-- A selected photograph can now generate a real textured mesh based on **estimated relative monocular depth**. It is a view-dependent 2.5D surface, not an accurate watertight object or room from multiple photos; batch SfM and Gaussian Splatting training remain planned.
+- Single photo: estimated relative monocular depth produces a view-dependent 2.5D mesh. Multi photo: actual SfM and learned 3D Gaussian splats run in WebGPU. Neither guarantees watertight multi-view polygonal geometry or calibrated real-world scale.
 - glTF can use external resources when uploaded together and unique by filename. OBJ/MTL texture import is supported with matching files. Nested duplicate basenames are not supported. OBJ export doesn't include MTL; STL has no textures and is not guaranteed manifold.
 - The photo warnings are heuristics, not a photogrammetry success metric.
 - A local save can disappear when browser data is cleared; use ZIP export for backups.
-- CDN access is needed on first load. Hosting: GitHub Pages Deploy from a branch main/root; no Actions.
+- Single-image ML, Three.js/ZIP/icon runtime still use external static hosts. Multi-view SfM/3DGS is pinned locally in vendor/splatjs. Hosting: GitHub Pages Deploy from a branch main/root; no Actions.

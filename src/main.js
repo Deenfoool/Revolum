@@ -8,7 +8,7 @@ const icons=()=>window.lucide?.createIcons();
 const uid=()=>crypto.randomUUID?.()||'p'+Date.now()+Math.random().toString(36).slice(2);
 const state={name:'Untitled scan',photos:[],selectedPhotoId:null,mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve(),importController:null,depthRunning:false};
 let engine;
-let videoController=null,cameraStream=null;
+let videoController=null,cameraStream=null,multiview=null,mvPending=false;
 function toast(message,type='info'){const item=document.createElement('div');item.className='toast '+type;item.textContent=message;$('toast-stack').appendChild(item);setTimeout(()=>item.remove(),5300)}
 const project=()=>({name:state.name,objects:engine.snapshot(),photos:state.photos.map(({url,...p})=>({...p}))});
 function status(label){$('save-state').innerHTML='<i data-lucide="hard-drive"></i> '+label;icons()}
@@ -17,6 +17,7 @@ async function saveNow(notify=true){clearTimeout(state.saveTimer);const snapshot
 function capture(){return project()}
 function commitHistory(before){state.history.push(before||capture());if(state.history.length>25)state.history.shift();state.redo=[]}
 async function restoreSnapshot(snapshot,notify=false){
+  if(multiview){await multiview.reset();multiview=null;resetMultiviewUi()}
   state.loading=true;
   try{state.name=snapshot.name||'Untitled scan';$('project-name').value=state.name;
     clearPhotos();state.photos=(snapshot.photos||[]).map(p=>({...p,url:URL.createObjectURL(p.file)}));state.selectedPhotoId=state.photos[0]?.id||null;
@@ -26,7 +27,7 @@ async function restoreSnapshot(snapshot,notify=false){
 }
 async function undo(){if(!state.history.length||state.busy)return;const prev=state.history.pop();state.redo.push(capture());await restoreSnapshot(prev)}
 async function redo(){if(!state.redo.length||state.busy)return;const next=state.redo.pop();state.history.push(capture());await restoreSnapshot(next)}
-function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn','new-btn','restore-btn','open-zip-btn','add-shape','delete-object','depth-quality','depth-strength'])$(id).disabled=b;$('reconstruct-selected').disabled=b||!state.selectedPhotoId;}
+function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn','new-btn','restore-btn','open-zip-btn','add-shape','delete-object','depth-quality','depth-strength'])$(id).disabled=b;$('reconstruct-selected').disabled=b||!state.selectedPhotoId;$('mv-start').disabled=b||state.photos.length<8||!!multiview?.ready||mvPending;$('mv-preset').disabled=b||!!multiview?.ready||mvPending;}
 function beginImport(label,total){
   state.importController=new AbortController();setBusy(true);
   $('import-status').classList.remove('hidden');$('import-progress').max=Math.max(1,total);$('import-progress').value=0;
@@ -80,6 +81,8 @@ function renderPhotos(){
   $('photo-stat-gps').textContent=String(state.photos.filter(p=>p.exif?.hasGps).length).padStart(2,'0');
   if(!state.photos.some(p=>p.id===state.selectedPhotoId))state.selectedPhotoId=state.photos[0]?.id||null;
   $('reconstruct-selected').disabled=state.busy||!state.selectedPhotoId;
+  $('mv-input-count').textContent='Выбрано '+state.photos.length+' фото · требуется 8–120';
+  $('mv-start').disabled=state.busy||state.photos.length<8||state.photos.length>120||!!multiview?.ready||mvPending;
   const issueMap=new Map();state.photos.forEach((p,i)=>issueMap.set(p.id,photoIssues(p,state.photos.slice(0,i))));
   const film=$('filmstrip'),grid=$('photo-grid'),side=$('photo-side-list');film.replaceChildren();grid.replaceChildren();side.replaceChildren();
   if(!state.photos.length){film.innerHTML='<span class="filmstrip-empty">Добавьте фотографии для нового скана <i data-lucide="arrow-right"></i></span>';grid.innerHTML='<div class="photo-empty"><i data-lucide="image-plus"></i><strong>Пока нет фотографий</strong><span>JPEG, PNG, WebP или HEIC (если браузер поддерживает декодирование)</span></div>';side.innerHTML='<p class="list-empty">Начните с фотографий объекта или помещения.</p>'}
@@ -160,6 +163,86 @@ async function addPhotos(files){
   }finally{
     finishImport();if(signal.aborted)toast('Импорт остановлен. Уже добавленные фотографии сохранены.');
   }
+}
+function multiviewButtons(){
+  const ready=!!multiview?.ready,phase=multiview?.phase||'idle';
+  $('mv-pause').classList.toggle('hidden',phase!=='training');
+  $('mv-resume').classList.toggle('hidden',phase!=='paused');
+  $('mv-finish').classList.toggle('hidden',phase!=='training'&&phase!=='paused');
+  $('mv-cancel').classList.toggle('hidden',!mvPending);
+  $('mv-new').classList.toggle('hidden',!ready&&!mvPending);
+  for(const id of ['mv-export-ply','mv-export-cloud','mv-export-cameras','mv-cloud-to-scene'])$(id).disabled=!ready;
+  $('mv-start').disabled=state.busy||mvPending||ready||state.photos.length<8||state.photos.length>120;
+  $('mv-preset').disabled=state.busy||mvPending||ready;
+  icons();
+}
+function resetMultiviewUi(){
+  $('mv-viewer').classList.add('hidden');$('mv-camera').replaceChildren();
+  $('mv-progress').classList.add('hidden');$('mv-progress').value=0;
+  $('mv-stats').textContent='SfM';$('mv-status').textContent='Нужен WebGPU и 8–120 перекрывающихся фотографий одной неподвижной сцены.';
+  multiviewButtons();
+}
+async function startMultiview(){
+  if(state.busy||mvPending||multiview?.ready)return;
+  const photos=state.photos.map(p=>p.file);
+  if(photos.length<8||photos.length>120){toast('Для многокадрового скана требуется от 8 до 120 кадров','error');return}
+  if(!navigator.gpu){$('mv-status').textContent='WebGPU не обнаружен. Включите аппаратное ускорение или откройте сайт в совместимом браузере.';toast('WebGPU недоступен: настоящий тренер Gaussian Splats не может запуститься','error');return}
+  mvPending=true;setBusy(true);multiviewButtons();
+  $('mv-progress').classList.remove('hidden');$('mv-progress').value=0;
+  $('mv-status').textContent='Загрузка локального SfM/3DGS движка…';
+  try{
+    const {MultiViewReconstruction}=await import('./multiview.js');
+    multiview=new MultiViewReconstruction({
+      canvas:$('mv-canvas'),
+      onUpdate:e=>{
+        $('mv-status').textContent=e.message;
+        if(e.stage&&e.total>0)$('mv-progress').value=Math.round(e.done/e.total*100);
+        if(e.phase==='training'||e.phase==='paused'||e.phase==='complete')multiviewButtons();
+        if(e.metrics){
+          $('mv-progress').value=Math.round(e.metrics.iter/Number($('mv-preset').value)*100);
+          $('mv-stats').textContent=e.metrics.iter.toLocaleString('ru-RU')+' итераций · '+(e.metrics.splats||0).toLocaleString('ru-RU')+' Gaussian Splats'+(Number.isFinite(e.metrics.psnrTrain)?' · PSNR '+e.metrics.psnrTrain.toFixed(1):'');
+        }
+      },
+      onReady:e=>{
+        $('mv-viewer').classList.remove('hidden');$('mv-camera').replaceChildren();
+        for(const c of e.cameras){const option=document.createElement('option');option.value=String(c.index);option.textContent=(c.index+1)+' · '+c.name;$('mv-camera').append(option)}
+        $('mv-stats').textContent='SfM: '+e.registered+'/'+e.input+' камер · '+e.points.toLocaleString('ru-RU')+' общих 3D-точек';
+        mvPending=false;setBusy(false);multiviewButtons();
+        toast('Рассчитаны камеры. Настоящее обучение 3DGS запущено.','success');
+      },
+      onComplete:e=>{multiviewButtons();$('mv-progress').value=100;toast('Обучение Gaussian Splats завершено. Можно экспортировать PLY.','success')},
+      onError:e=>{mvPending=false;setBusy(false);multiviewButtons();toast('Многокадровая реконструкция: '+(e?.message||e),'error')}
+    });
+    const preset=Number($('mv-preset').value);
+    await multiview.run(photos,{maxIters:preset,initTarget:preset<=4000?6000:preset<=12000?20000:40000});
+  }catch(error){
+    $('mv-status').textContent='Ошибка: '+error.message;
+    toast('SfM / Gaussian Splatting: '+error.message,'error');
+  }finally{mvPending=false;setBusy(false);multiviewButtons()}
+}
+async function newMultiview(){
+  if(mvPending){multiview?.controller?.abort();$('mv-status').textContent='Запрошена отмена текущего расчёта…';return}
+  try{await multiview?.reset()}catch(e){console.warn(e)}
+  multiview=null;resetMultiviewUi();
+}
+async function downloadMultiview(kind){
+  if(!multiview?.ready)return;
+  const map={ply:()=>multiview.exportPly(),cloud:()=>multiview.exportSparse(),cameras:()=>multiview.exportCameras()};
+  if(!map[kind])return;
+  const name=safeFilename(state.name),suffix={ply:'-gaussian-splats.ply',cloud:'-sparse-cloud.ply',cameras:'-cameras.json'}[kind];
+  const button=$('mv-export-'+kind);button.disabled=true;
+  try{const blob=await map[kind]();download(blob,name+suffix);toast('Файл '+suffix+' подготовлен к скачиванию','success')}
+  catch(error){toast('Экспорт: '+error.message,'error')}
+  finally{button.disabled=!multiview?.ready}
+}
+async function addSparseToScene(){
+  if(!multiview?.ready||state.busy)return;
+  setBusy(true);
+  try{
+    const blob=multiview.exportSparse(),file=new File([blob],safeFilename(state.name)+'-sparse.ply',{type:'application/octet-stream'});
+    const before=capture();await engine.importFile(file);commitHistory(before);queueSave();setMode('object');
+    toast('Рассчитанное общее облако точек добавлено в Object Studio','success');
+  }catch(error){toast('Импорт облака: '+error.message,'error')}finally{setBusy(false)}
 }
 async function reconstructSelectedPhoto(){
   if(state.busy)return;
@@ -276,7 +359,7 @@ async function saveLibraryCopy(){
  try{const saved=await saveNamedProject(project());await renderLibrary();toast('Сохранена копия «'+saved.name+'»','success')}
  catch(error){toast('Ошибка сохранения: '+error.message,'error')}finally{setBusy(false)}
 }
-function confirmReset(){if(!confirm('Очистить текущую сцену и фотосет? Сначала сохраните ZIP, если нужна резервная копия.'))return;commitHistory();state.loading=true;engine.clear();clearPhotos();state.name='Untitled scan';$('project-name').value=state.name;state.loading=false;setMode('object');renderAll();queueSave()}
+function confirmReset(){if(!confirm('Очистить текущую сцену и фотосет? Сначала сохраните ZIP, если нужна резервная копия.'))return;if(multiview){multiview.reset().catch(console.warn);multiview=null;resetMultiviewUi()}commitHistory();state.loading=true;engine.clear();clearPhotos();state.name='Untitled scan';$('project-name').value=state.name;state.loading=false;setMode('object');renderAll();queueSave()}
 function removeObject(){if(!engine.selectedId)return;commitHistory();engine.remove(engine.selectedId);renderInspector();queueSave()}
 function demo(){state.loading=true;const knot=engine.addPrimitive('knot',{name:'Demo / Sculpted form',silent:true});engine.applyTransform(knot.id,{position:[0,.18,0],rotation:[.3,.2,0],scale:[1,1,1]},false);const base=engine.addPrimitive('cylinder',{name:'Demo / Pedestal',silent:true});engine.applyTransform(base.id,{position:[0,-1.06,0],rotation:[0,0,0],scale:[1.55,.13,1.55]},false);engine.select(knot.id);engine.frame();state.loading=false;renderAll()}
 function keyboard(event){
@@ -304,6 +387,20 @@ function bind(){
   $('library-close-btn').onclick=()=>$('library-dialog').close();
   $('library-save-btn').onclick=saveLibraryCopy;
   $('reconstruct-selected').onclick=reconstructSelectedPhoto;
+  $('mv-start').onclick=startMultiview;
+  $('mv-cancel').onclick=()=>{multiview?.controller?.abort();$('mv-status').textContent='Отмена запрошена. Завершаем текущую операцию…'};
+  $('mv-new').onclick=newMultiview;
+  $('mv-pause').onclick=()=>{multiview?.pause();multiviewButtons()};
+  $('mv-resume').onclick=()=>{try{multiview?.resume();multiviewButtons()}catch(e){toast(e.message,'error')}};
+  $('mv-finish').onclick=async()=>{try{await multiview?.finish();multiviewButtons()}catch(e){toast(e.message,'error')}};
+  $('mv-camera').onchange=e=>{try{multiview?.selectCamera(e.target.value)}catch(error){toast(error.message,'error')}};
+  const splatCanvas=$('mv-canvas');let splatPointer=null;
+  splatCanvas.addEventListener('pointerdown',e=>{if(!multiview?.ready||e.button!==0)return;splatPointer=[e.clientX,e.clientY,e.pointerId];splatCanvas.setPointerCapture(e.pointerId)});
+  splatCanvas.addEventListener('pointermove',e=>{if(!splatPointer||splatPointer[2]!==e.pointerId)return;const dx=e.clientX-splatPointer[0],dy=e.clientY-splatPointer[1];splatPointer=[e.clientX,e.clientY,e.pointerId];multiview?.orbit(dx,dy)});
+  const releaseSplat=e=>{if(splatPointer?.[2]===e.pointerId)splatPointer=null};splatCanvas.addEventListener('pointerup',releaseSplat);splatCanvas.addEventListener('pointercancel',releaseSplat);
+  splatCanvas.addEventListener('wheel',e=>{if(!multiview?.ready)return;e.preventDefault();multiview.orbit(0,0,e.deltaY)},{passive:false});
+  for(const kind of ['ply','cloud','cameras'])$('mv-export-'+kind).onclick=()=>downloadMultiview(kind);
+  $('mv-cloud-to-scene').onclick=addSparseToScene;
   $('reconstruct-cancel').onclick=()=>{if(!state.depthRunning)return;state.depthRunning=false;cancelDepth();$('reconstruct-status').textContent='Реконструкция отменена. Уже созданные модели сохранены.';}
   $('import-cancel-btn').onclick=()=>{state.importController?.abort();$('import-cancel-btn').disabled=true;$('import-status-text').textContent='Остановка после текущего файла…'};
   $('video-import-btn').onclick=()=>$('video-file').click();
@@ -343,6 +440,6 @@ async function init(){
   try{engine=new Studio3D($('viewport'),{onSelect:()=>{renderScene();renderInspector()},onChange:()=>{if(!state.loading){renderScene();renderInspector();queueSave()}},onTransformStart:()=>{state.transformStart={before:capture(),id:engine.selectedId,transform:engine.getTransform(engine.selectedId)}},onTransformEnd:()=>{const start=state.transformStart;state.transformStart=null;if(start&&JSON.stringify(engine.getTransform(start.id))!==JSON.stringify(start.transform)){commitHistory(start.before);queueSave()}},onTransform:renderInspector,onError:m=>toast(m,'error')})}
   catch(error){toast('3D-движок не запустился: '+error.message,'error');console.error(error);return}
   bind();try{const local=await loadLocal();if(local?.project){await restoreSnapshot(local.project);status('Открыт локально')}else demo()}catch(error){console.warn('Local restore:',error);demo();toast('Локальное сохранение недоступно: '+error.message,'error')}
-  renderAll();icons();
+  renderAll();resetMultiviewUi();icons();
 }
 init();

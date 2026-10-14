@@ -48,7 +48,7 @@
         <button id="import-model-btn" class="btn btn-outline btn-full"><i data-lucide="package-plus"></i> Импорт модели</button>
         <button id="import-model-folder-btn" class="btn btn-outline btn-full"><i data-lucide="folder-input"></i> Импорт папки модели</button>\n        <button id="import-photos-btn" class="btn btn-outline btn-full hidden"><i data-lucide="images"></i> Добавить фотографии</button>
         <div class="storage-note"><i data-lucide="hard-drive"></i><span>Файлы остаются на устройстве. Экспортируйте ZIP для резервной копии.</span></div>
-        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.2.0</span></div>
+        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.3.0</span></div>
       </div>
     </aside>
     <main class="main-area">
@@ -74,13 +74,39 @@
           <div class="photo-intro"><div><div class="tiny-label"><span class="live-dot"></span> SCAN INPUT / LOCAL</div><h2>Сначала снимки.<br><em>Потом геометрия.</em></h2><p>Снимайте объект по кругу с перекрытием кадров, загрузите фотографии и проверьте готовность набора. Изображения не отправляются на сервер.</p><div class="capture-actions"><button class="btn btn-primary" id="photo-import-hero"><i data-lucide="images"></i> Выбрать фотографии</button><button class="btn btn-outline" id="video-import-btn"><i data-lucide="film"></i> Из видео</button><button class="btn btn-outline" id="camera-open-btn"><i data-lucide="camera"></i> Камера</button></div><div class="video-options"><label for="frame-count">Кадров из видео</label><select id="frame-count" aria-label="Количество кадров"><option value="12">12</option><option value="24" selected>24</option><option value="48">48</option></select><span id="capture-status" role="status"></span><button class="btn btn-quiet hidden" id="capture-cancel-btn"><i data-lucide="x"></i> Отмена</button></div></div><div class="scan-illustration" aria-hidden="true"><div class="scan-ring scan-ring-one"></div><div class="scan-ring scan-ring-two"></div><div class="scan-core"><i data-lucide="scan"></i></div><span class="scan-point p1"></span><span class="scan-point p2"></span><span class="scan-point p3"></span><span class="scan-point p4"></span></div></div>
           <div class="scan-stats"><div><small>IMAGES</small><strong id="photo-stat-count">00</strong></div><div><small>RESOLUTION FLAGS</small><strong id="photo-stat-resolution">00</strong></div><div><small>EXPOSURE FLAGS</small><strong id="photo-stat-exposure">00</strong></div><div><small>ESTIMATED STORAGE</small><strong id="photo-stat-size">0 MB</strong></div><div><small>GPS METADATA</small><strong id="photo-stat-gps">00</strong></div></div>
           <div class="scan-board"><div class="scan-board-heading"><div><span class="overline">INPUT / IMAGE SET</span><h3>Фотографии <span id="photo-count-header">(0)</span></h3></div><button class="btn btn-quiet" id="photo-add-inline"><i data-lucide="plus"></i> Добавить</button></div><div id="photo-grid" class="photo-grid"><div class="photo-empty"><i data-lucide="image-plus"></i><strong>Пока нет фотографий</strong><span>JPEG, PNG, WebP или HEIC (если браузер поддерживает декодирование)</span></div></div></div>
+          <div class="multiview-panel" id="multiview-panel">
+            <div class="reconstruction-heading"><div><span class="overline">FULL PHOTOGRAMMETRY / WEBGPU · SPATIAL CAPTURE</span><h3>Многокадровый 3D Gaussian Splatting<span class="multiview-new">NEW</span></h3><p>От 8 до 120 перекрывающихся фотографий. Настоящий SfM: поиск признаков → сопоставление → расчёт положений камер → триангуляция → обучение анизотропных Gaussian Splats в браузере. Без загрузки ваших фотографий на сервер.</p></div><span class="reconstruction-badge">SPLAT.JS · MIT</span></div>
+            <div class="multiview-controls">
+              <label>Профиль обучения<select id="mv-preset"><option value="4000">Draft · 4 000 итераций</option><option value="12000" selected>Balanced · 12 000</option><option value="30000">Quality · 30 000</option></select></label>
+              <span class="mv-count" id="mv-input-count">Выбрано 0 фото · требуется 8+</span>
+              <button class="btn btn-primary" id="mv-start" disabled><i data-lucide="scan-face"></i> Собрать 3D-пространство</button>
+              <button class="btn btn-quiet hidden" id="mv-new"><i data-lucide="refresh-cw"></i> Новый многокадровый скан</button>
+              <button class="btn btn-danger hidden" id="mv-cancel"><i data-lucide="x"></i> Отменить расчёт</button>
+              <button class="btn btn-outline hidden" id="mv-pause"><i data-lucide="pause"></i> Пауза</button>
+              <button class="btn btn-outline hidden" id="mv-resume"><i data-lucide="play"></i> Продолжить</button>
+              <button class="btn btn-outline hidden" id="mv-finish"><i data-lucide="check"></i> Завершить</button>
+            </div>
+            <div class="mv-status" aria-live="polite"><div id="mv-status">Нужен WebGPU и перекрывающиеся фотографии одной неподвижной сцены.</div><progress id="mv-progress" max="100" value="0" class="hidden" aria-label="Прогресс многокадровой реконструкции"></progress></div>
+            <div id="mv-viewer" class="mv-viewer hidden">
+              <div class="mv-view-header"><span><i data-lucide="orbit"></i> LIVE 3DGS PREVIEW</span><label>Ракурс камеры <select id="mv-camera" aria-label="Ракурс рассчитанной камеры"></select></label></div>
+              <canvas id="mv-canvas" width="960" height="540" aria-label="Результат Gaussian Splatting WebGPU"></canvas>
+              <div class="mv-view-foot"><span id="mv-stats">SfM</span><span>Мышью вращать · колесом приближать · масштаб сцены относительный</span></div>
+            </div>
+            <div class="mv-exports" id="mv-exports">
+              <button id="mv-export-ply" class="btn btn-outline" disabled><i data-lucide="download"></i> Экспорт обученных сплатов (.ply)</button>
+              <button id="mv-export-cloud" class="btn btn-outline" disabled><i data-lucide="orbit"></i> Облако точек (.ply)</button>
+              <button id="mv-export-cameras" class="btn btn-outline" disabled><i data-lucide="camera"></i> Положения камер (.json)</button>
+              <button id="mv-cloud-to-scene" class="btn btn-outline" disabled><i data-lucide="boxes"></i> Облако → Object Studio</button>
+            </div>
+            <p class="reconstruction-disclaimer">Режим использует полноценный браузерный движок <a href="https://github.com/arrival-space/splat.js" target="_blank" rel="noopener noreferrer">Splat.js</a>, зафиксированный в <code>vendor/splatjs</code>. WebGPU и видеопамять обязательны. Автоматическая регистрация может не получиться на бликующих, однотонных или недостаточно перекрывающихся снимках. Результат 3DGS — обученная сцена в PLY, а не полигональный Mesh; для геометрии сохраняется отдельный режим по одному снимку ниже.</p>
+          </div>
           <div class="reconstruction-panel" id="reconstruction-panel">
             <div class="reconstruction-heading"><div><span class="overline">LOCAL AI / RECONSTRUCTION</span><h3>Фото → настоящая 3D-сетка</h3><p>Выберите фото выше. Depth Anything V2 рассчитает относительную глубину прямо в браузере, Revolum построит текстурированную поверхность и добавит её в Object Studio.</p></div><span class="reconstruction-badge">BROWSER ML</span></div>
             <div class="reconstruction-controls"><label>Детализация сетки<select id="depth-quality"><option value="96">Низкая · быстрее</option><option value="160" selected>Средняя · рекомендуется</option><option value="224">Высокая</option></select></label><label>Выраженность глубины<select id="depth-strength"><option value="0.45">Мягкая</option><option value="0.9" selected>Обычная</option><option value="1.5">Сильная</option></select></label></div>
             <div class="reconstruction-actions"><button class="btn btn-primary" id="reconstruct-selected" disabled><i data-lucide="scan"></i> Создать 3D из выбранного фото</button><button class="btn btn-danger hidden" id="reconstruct-cancel"><i data-lucide="x"></i> Остановить</button></div>
             <p class="reconstruction-status" id="reconstruct-status" role="status" aria-live="polite">Добавьте фотографию и выберите её для реконструкции.</p>
             <canvas id="depth-preview" class="depth-preview hidden" aria-label="Предсказанная карта глубины"></canvas>
-            <p class="reconstruction-disclaimer">Результат — реальный Mesh, построенный по ML-карте <b>относительной</b> глубины с одной фотографии (2.5D). Скрытые стороны объекта, метрические размеры, автоматическое совмещение разных ракурсов и обученный Gaussian Splatting здесь не восстанавливаются. Первый запуск скачивает модель (порядка 27 МБ) и браузерный ML-движок; фотографии остаются на устройстве.</p>
+            <p class="reconstruction-disclaimer">Результат — реальный Mesh, построенный по ML-карте <b>относительной</b> глубины с одной фотографии (2.5D). Скрытые стороны объекта, метрические размеры, автоматическое совмещение разных ракурсов этим алгоритмом не выполняется: для этого используйте многокадровый режим выше. Первый запуск скачивает модель (порядка 27 МБ) и браузерный ML-движок; фотографии остаются на устройстве.</p>
           </div>
         </section>
       </div>
