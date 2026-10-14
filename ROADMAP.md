@@ -15,8 +15,10 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [ ] Full asset lifecycle / import progress and cancellation for large scans
 
 ## M2 — Scan preparation
-- [ ] Camera capture and video-to-frames
-- [ ] EXIF analysis, duplicates, sharper frame selection and visual coverage map
+- [x] Camera capture and video-to-frames (browser-only, video up to 5 minutes and 48 sampled frames)
+- [ ] EXIF analysis and visual coverage map
+- [x] Heuristic near-duplicate, low-detail, resolution and exposure warnings (not reliable blur/focus measurement)
+- [ ] Actual sharp-frame selection and perceptual quality calibration
 - [ ] Multi-file glTF resource and textured OBJ/MTL handling
 - [ ] Project library with multiple saved projects
 - [ ] Point-cloud tools (crop, align, measure and cleanup)
@@ -35,6 +37,11 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [ ] Measuring against a known physical reference
 - [ ] Versioned portable projects and migrations
 - [ ] Export adapters and licensing/compliance audit
+
+## M2 delivered so far
+- Camera permission and capture require HTTPS/localhost; tracks stop when the dialog closes or page is hidden.
+- Locally decoded video frames can be prepared from compatible MP4/WebM/MOV sources. Browser codec support varies; no server transcoding.
+- Similarity and sharpness indicators are approximate warnings, not certainty about overlap or success of SfM.
 
 ## Explicit limits in M1
 - Photograph upload does **not** create real 3D reconstruction yet.

@@ -1,11 +1,13 @@
 import { Studio3D,MODEL_EXTENSIONS } from './scene.js';
-import { inspectPhoto,isPhoto,formatSize } from './photos.js';
+import { inspectPhoto,isPhoto,formatSize,photoIssues } from './photos.js';
+import { videoFrames,captureCameraFrame } from './capture.js';
 import { saveLocal,loadLocal,exportProjectZip,importProjectZip,download,safeFilename } from './storage.js';
 const $=id=>document.getElementById(id);
 const icons=()=>window.lucide?.createIcons();
 const uid=()=>crypto.randomUUID?.()||'p'+Date.now()+Math.random().toString(36).slice(2);
 const state={name:'Untitled scan',photos:[],mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve()};
 let engine;
+let videoController=null,cameraStream=null;
 function toast(message,type='info'){const item=document.createElement('div');item.className='toast '+type;item.textContent=message;$('toast-stack').appendChild(item);setTimeout(()=>item.remove(),5300)}
 const project=()=>({name:state.name,objects:engine.snapshot(),photos:state.photos.map(({url,...p})=>({...p}))});
 function status(label){$('save-state').innerHTML='<i data-lucide="hard-drive"></i> '+label;icons()}
@@ -23,7 +25,7 @@ async function restoreSnapshot(snapshot,notify=false){
 }
 async function undo(){if(!state.history.length||state.busy)return;const prev=state.history.pop();state.redo.push(capture());await restoreSnapshot(prev)}
 async function redo(){if(!state.redo.length||state.busy)return;const next=state.redo.pop();state.history.push(capture());await restoreSnapshot(next)}
-function setBusy(b){state.busy=b;$('export-btn').disabled=b;$('save-btn').disabled=b;$('import-model-btn').disabled=b;$('import-photos-btn').disabled=b;}
+function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline'])$(id).disabled=b;}
 function renderAll(){renderScene();renderPhotos();renderInspector();renderMode()}
 function renderScene(){
   const list=$('object-list');list.replaceChildren();
@@ -61,19 +63,20 @@ function renderPhotos(){
   $('photo-stat-resolution').textContent=String(state.photos.filter(p=>p.flags.some(f=>f.includes('разрешение'))).length).padStart(2,'0');
   $('photo-stat-exposure').textContent=String(state.photos.filter(p=>p.flags.some(f=>f.includes('темно')||f.includes('пересвет'))).length).padStart(2,'0');
   $('photo-stat-size').textContent=formatSize(state.photos.reduce((n,p)=>n+p.file.size,0));
+  const issueMap=new Map();state.photos.forEach((p,i)=>issueMap.set(p.id,photoIssues(p,state.photos.slice(0,i))));
   const film=$('filmstrip'),grid=$('photo-grid'),side=$('photo-side-list');film.replaceChildren();grid.replaceChildren();side.replaceChildren();
   if(!state.photos.length){film.innerHTML='<span class="filmstrip-empty">Добавьте фотографии для нового скана <i data-lucide="arrow-right"></i></span>';grid.innerHTML='<div class="photo-empty"><i data-lucide="image-plus"></i><strong>Пока нет фотографий</strong><span>JPEG, PNG, WebP или HEIC (если браузер поддерживает декодирование)</span></div>';side.innerHTML='<p class="list-empty">Начните с фотографий объекта или помещения.</p>'}
   for(const p of state.photos){
     const thumb=document.createElement('img');thumb.className='film-thumb';thumb.src=p.url;thumb.alt=p.file.name;thumb.title=p.file.name;thumb.loading='lazy';thumb.onclick=()=>setMode('photos');film.append(thumb);
-    const tile=document.createElement('div');tile.className='photo-tile'+(p.flags.length?' flag':'');
+    const issues=issueMap.get(p.id);const tile=document.createElement('div');tile.className='photo-tile'+(issues.length?' flag':'');
     const image=document.createElement('img');image.src=p.url;image.alt=p.file.name;image.loading='lazy';tile.append(image);
     const btn=document.createElement('button');btn.type='button';btn.className='tile-remove';btn.title='Удалить фото';btn.setAttribute('aria-label','Удалить '+p.file.name);btn.innerHTML='<i data-lucide="x"></i>';btn.onclick=()=>removePhoto(p.id);tile.append(btn);
     const info=document.createElement('div');info.className='tile-info';const strong=document.createElement('strong');strong.textContent=p.file.name;strong.title=p.file.name;
-    const details=document.createElement('span');details.textContent=p.width+' × '+p.height+(p.flags.length?' · ⚠':' · OK');details.title=p.flags.join('; ')||'Нет обнаруженных замечаний';info.append(strong,details);tile.append(info);grid.append(tile);
+    const details=document.createElement('span');details.textContent=p.width+' × '+p.height+(issues.length?' · ⚠':' · OK');details.title=issues.join('; ')||'Нет обнаруженных замечаний';info.append(strong,details);tile.append(info);grid.append(tile);
     const entry=document.createElement('div');entry.className='item-entry';entry.innerHTML='<i data-lucide="image"></i><span></span>';entry.querySelector('span').textContent=p.file.name;entry.title=p.file.name;side.append(entry);
   }
-  const flagged=state.photos.filter(p=>p.flags.length);
-  $('quality-overview').textContent=!state.photos.length?'Добавьте фото — мы проверим разрешение и приблизительную экспозицию. Проверка не гарантирует успешную реконструкцию.':flagged.length?flagged.length+' из '+state.photos.length+' фото требуют внимания: '+flagged.slice(0,3).map(p=>p.file.name+' ('+p.flags.join(', ')+')').join('; ')+'.':'Явных проблем с разрешением и примерной экспозицией не обнаружено. Это не проверка перекрытия кадров, фокуса или возможности реконструкции.';
+  const flagged=state.photos.filter(p=>issueMap.get(p.id).length);
+  $('quality-overview').textContent=!state.photos.length?'Добавьте фото — мы проверим разрешение, приблизительную экспозицию, текстуру и схожесть кадров. Это не гарантия успешной реконструкции.':flagged.length?flagged.length+' из '+state.photos.length+' фото требуют внимания: '+flagged.slice(0,3).map(p=>p.file.name+' ('+issueMap.get(p.id).join(', ')+')').join('; ')+'.':'Автоматические предупреждения не обнаружены. Расположение камер и достаточность перекрытия кадров ещё не анализируются.';
   icons();
 }
 function setMode(mode){state.mode=mode==='photos'?'photos':'object';renderMode()}
@@ -106,6 +109,43 @@ async function addPhotos(files){
     if(added){commitHistory(before);renderPhotos();queueSave();toast('Добавлено фотографий: '+added,'success')}
   }finally{setBusy(false)}
 }
+async function importVideo(file) {
+  if(!file||state.busy)return;
+  if(state.photos.length>=500){toast('В фотосете достигнут лимит 500 кадров','error');return}
+  videoController=new AbortController();setBusy(true);
+  $('capture-cancel-btn').classList.remove('hidden');$('capture-status').textContent='Чтение видео…';
+  try{
+    const available=500-state.photos.length,requested=Number($('frame-count').value);
+    const frames=await videoFrames(file,{count:Math.min(requested,available),signal:videoController.signal,onProgress:(done,total)=>{$('capture-status').textContent='Кадры: '+done+' / '+total}});
+    // addPhotos owns the normal quality checks, storage and undo history.
+    setBusy(false);await addPhotos(frames);
+    $('capture-status').textContent='Извлечено '+frames.length+' кадров';
+  }catch(error){$('capture-status').textContent='Извлечение остановлено';toast(error.message,'error')}
+  finally{videoController=null;$('capture-cancel-btn').classList.add('hidden');$('video-file').value='';setBusy(false)}
+}
+function stopCamera(){
+  if(cameraStream){cameraStream.getTracks().forEach(track=>track.stop());cameraStream=null}
+  const preview=$('camera-preview');preview.pause();preview.srcObject=null;$('camera-shot-btn').disabled=true;
+}
+async function openCamera() {
+  if(state.busy)return;
+  if(!navigator.mediaDevices?.getUserMedia){toast('Камера недоступна: нужен HTTPS или localhost и совместимый браузер','error');return}
+  const dialog=$('camera-dialog');dialog.showModal();$('camera-status').textContent='Запрос доступа…';
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
+    if(!dialog.open){stream.getTracks().forEach(track=>track.stop());return}
+    cameraStream=stream;const preview=$('camera-preview');preview.srcObject=stream;await preview.play();
+    $('camera-status').textContent='Камера готова';$('camera-shot-btn').disabled=false;
+    stream.getVideoTracks()[0]?.addEventListener('ended',()=>{stopCamera();$('camera-status').textContent='Камера отключена'});
+  }catch(error){stopCamera();$('camera-status').textContent='Нет доступа к камере';toast('Камера: '+error.message,'error')}
+}
+async function shootCamera(){
+  if(state.busy||!cameraStream)return;
+  $('camera-shot-btn').disabled=true;
+  try{const file=await captureCameraFrame($('camera-preview'));await addPhotos([file]);$('camera-status').textContent='Снимок добавлен · '+state.photos.length+' кадров'}
+  catch(error){toast('Снимок не сохранён: '+error.message,'error')}
+  finally{$('camera-shot-btn').disabled=!cameraStream}
+}
 function chooseShape(){const dialog=document.createElement('dialog');dialog.className='modal';dialog.innerHTML='<div class="modal-heading"><div><div class="overline">GEOMETRY / NEW</div><h2>Добавить фигуру<span>.</span></h2></div><button class="icon-btn close-modal" aria-label="Закрыть"><i data-lucide="x"></i></button></div><div class="export-options">'+['box','sphere','cylinder','torus','knot'].map(t=>'<button class="export-choice" data-shape="'+t+'"><i data-lucide="shapes"></i><span><strong>'+({box:'Куб',sphere:'Сфера',cylinder:'Цилиндр',torus:'Тор',knot:'Узел (демо)'}[t])+'</strong><small>Добавить в текущую сцену</small></span><i data-lucide="plus"></i></button>').join('')+'</div>';document.body.append(dialog);dialog.querySelector('.close-modal').onclick=()=>dialog.close();dialog.querySelectorAll('[data-shape]').forEach(btn=>btn.onclick=()=>{commitHistory();engine.addPrimitive(btn.dataset.shape);engine.frame(engine.selectedId);queueSave();dialog.close()});dialog.onclose=()=>dialog.remove();dialog.showModal();icons()}
 async function doExport(format){if(state.busy)return;$('export-dialog').close();setBusy(true);try{
   const name=safeFilename(state.name);
@@ -137,6 +177,14 @@ function bind(){
   $('model-file').onchange=async e=>{await addModels(e.target.files);e.target.value=''};
   $('photo-file').onchange=async e=>{await addPhotos(e.target.files);e.target.value=''};
   $('project-file').onchange=e=>restoreFromZip(e.target.files[0]);
+  $('video-import-btn').onclick=()=>$('video-file').click();
+  $('video-file').onchange=e=>importVideo(e.target.files[0]);
+  $('capture-cancel-btn').onclick=()=>videoController?.abort();
+  $('camera-open-btn').onclick=openCamera;
+  $('camera-close-btn').onclick=()=>$('camera-dialog').close();
+  $('camera-dialog').addEventListener('close',stopCamera);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden&&$('camera-dialog').open)$('camera-dialog').close()});
+  $('camera-shot-btn').onclick=shootCamera;
   $('open-zip-btn').onclick=()=>$('project-file').click();
   $('project-name').onchange=e=>{const name=e.target.value.trim()||'Untitled scan';if(name!==state.name){commitHistory();state.name=name;e.target.value=name;queueSave()}};
   $('new-btn').onclick=confirmReset;$('save-btn').onclick=()=>saveNow();$('restore-btn').onclick=async()=>{try{const record=await loadLocal();if(!record){toast('В этом браузере ещё нет сохранённого проекта');return}if(confirm('Открыть локальную копию? Текущие несохранённые изменения будут заменены.')){commitHistory();await restoreSnapshot(record.project,true)}}catch(error){toast(error.message,'error')}};
@@ -160,7 +208,7 @@ function bind(){
   area.addEventListener('dragenter',e=>{if(!e.dataTransfer.types.includes('Files'))return;e.preventDefault();dragDepth++;if(state.mode==='object')$('drop-overlay').classList.remove('hidden')});
   area.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy'}});
   area.addEventListener('dragleave',e=>{e.preventDefault();dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)$('drop-overlay').classList.add('hidden')});
-  area.addEventListener('drop',async e=>{e.preventDefault();dragDepth=0;$('drop-overlay').classList.add('hidden');const files=[...e.dataTransfer.files];const photos=files.filter(isPhoto),models=files.filter(f=>MODEL_EXTENSIONS.includes(f.name.toLowerCase().split('.').pop()));if(models.length)await addModels(models);if(photos.length)await addPhotos(photos)});
+  area.addEventListener('drop',async e=>{e.preventDefault();dragDepth=0;$('drop-overlay').classList.add('hidden');const files=[...e.dataTransfer.files];const photos=files.filter(isPhoto),models=files.filter(f=>MODEL_EXTENSIONS.includes(f.name.toLowerCase().split('.').pop())),videos=files.filter(f=>/\.(mp4|webm|mov)$/i.test(f.name));if(models.length)await addModels(models);if(photos.length)await addPhotos(photos);if(videos.length)await importVideo(videos[0])});
 }
 async function init(){
   try{engine=new Studio3D($('viewport'),{onSelect:()=>{renderScene();renderInspector()},onChange:()=>{if(!state.loading){renderScene();renderInspector();queueSave()}},onTransformStart:()=>{state.transformStart={before:capture(),id:engine.selectedId,transform:engine.getTransform(engine.selectedId)}},onTransformEnd:()=>{const start=state.transformStart;state.transformStart=null;if(start&&JSON.stringify(engine.getTransform(start.id))!==JSON.stringify(start.transform)){commitHistory(start.before);queueSave()}},onTransform:renderInspector,onError:m=>toast(m,'error')})}
