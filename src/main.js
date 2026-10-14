@@ -1,11 +1,12 @@
 import { Studio3D,MODEL_EXTENSIONS } from './scene.js';
 import { inspectPhoto,isPhoto,formatSize,photoIssues } from './photos.js';
 import { videoFrames,captureCameraFrame } from './capture.js';
+import { estimateDepth,cancelDepth,depthGeometry,drawDepthPreview } from './depth-reconstruct.js';
 import { saveLocal,loadLocal,exportProjectZip,importProjectZip,download,safeFilename,listNamedProjects,saveNamedProject,loadNamedProject,deleteNamedProject } from './storage.js';
 const $=id=>document.getElementById(id);
 const icons=()=>window.lucide?.createIcons();
 const uid=()=>crypto.randomUUID?.()||'p'+Date.now()+Math.random().toString(36).slice(2);
-const state={name:'Untitled scan',photos:[],selectedPhotoId:null,mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve(),importController:null};
+const state={name:'Untitled scan',photos:[],selectedPhotoId:null,mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve(),importController:null,depthRunning:false};
 let engine;
 let videoController=null,cameraStream=null;
 function toast(message,type='info'){const item=document.createElement('div');item.className='toast '+type;item.textContent=message;$('toast-stack').appendChild(item);setTimeout(()=>item.remove(),5300)}
@@ -25,7 +26,7 @@ async function restoreSnapshot(snapshot,notify=false){
 }
 async function undo(){if(!state.history.length||state.busy)return;const prev=state.history.pop();state.redo.push(capture());await restoreSnapshot(prev)}
 async function redo(){if(!state.redo.length||state.busy)return;const next=state.redo.pop();state.history.push(capture());await restoreSnapshot(next)}
-function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn','new-btn','restore-btn','open-zip-btn','add-shape','delete-object'])$(id).disabled=b;}
+function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn','new-btn','restore-btn','open-zip-btn','add-shape','delete-object','depth-quality','depth-strength'])$(id).disabled=b;$('reconstruct-selected').disabled=b||!state.selectedPhotoId;}
 function beginImport(label,total){
   state.importController=new AbortController();setBusy(true);
   $('import-status').classList.remove('hidden');$('import-progress').max=Math.max(1,total);$('import-progress').value=0;
@@ -78,6 +79,7 @@ function renderPhotos(){
   $('photo-stat-size').textContent=formatSize(state.photos.reduce((n,p)=>n+p.file.size,0));
   $('photo-stat-gps').textContent=String(state.photos.filter(p=>p.exif?.hasGps).length).padStart(2,'0');
   if(!state.photos.some(p=>p.id===state.selectedPhotoId))state.selectedPhotoId=state.photos[0]?.id||null;
+  $('reconstruct-selected').disabled=state.busy||!state.selectedPhotoId;
   const issueMap=new Map();state.photos.forEach((p,i)=>issueMap.set(p.id,photoIssues(p,state.photos.slice(0,i))));
   const film=$('filmstrip'),grid=$('photo-grid'),side=$('photo-side-list');film.replaceChildren();grid.replaceChildren();side.replaceChildren();
   if(!state.photos.length){film.innerHTML='<span class="filmstrip-empty">Добавьте фотографии для нового скана <i data-lucide="arrow-right"></i></span>';grid.innerHTML='<div class="photo-empty"><i data-lucide="image-plus"></i><strong>Пока нет фотографий</strong><span>JPEG, PNG, WebP или HEIC (если браузер поддерживает декодирование)</span></div>';side.innerHTML='<p class="list-empty">Начните с фотографий объекта или помещения.</p>'}
@@ -157,6 +159,40 @@ async function addPhotos(files){
     if(added){commitHistory(before);renderPhotos();queueSave();toast('Добавлено фотографий: '+added,'success')}
   }finally{
     finishImport();if(signal.aborted)toast('Импорт остановлен. Уже добавленные фотографии сохранены.');
+  }
+}
+async function reconstructSelectedPhoto(){
+  if(state.busy)return;
+  const photo=state.photos.find(p=>p.id===state.selectedPhotoId);
+  if(!photo){toast('Выберите фотографию для реконструкции','error');return}
+  state.depthRunning=true;setBusy(true);
+  $('reconstruct-cancel').classList.remove('hidden');
+  $('depth-preview').classList.add('hidden');
+  $('reconstruct-status').textContent='Инициализация локального движка…';
+  try{
+    const prediction=await estimateDepth(photo.file,update=>{
+      if(update?.message)$('reconstruct-status').textContent=update.message;
+    });
+    if(!state.depthRunning)return;
+    $('reconstruct-status').textContent='Создаём текстурированную сетку…';
+    drawDepthPreview($('depth-preview'),prediction);
+    $('depth-preview').classList.remove('hidden');
+    const detail=Number($('depth-quality').value),strength=Number($('depth-strength').value);
+    const {geometry,texture,grid}=await depthGeometry(photo.file,prediction,{columns:detail,strength});
+    if(!state.depthRunning){geometry.dispose();texture.dispose();return}
+    const before=capture();
+    const name='Depth / '+photo.file.name.replace(/\.[^.]+$/,'');
+    const item=await engine.addDepthReconstruction({geometry,texture,name});
+    commitHistory(before);queueSave();setMode('object');
+    $('reconstruct-status').textContent='Готово: '+grid.columns+' × '+grid.rows+' сегментов · '+grid.indices.length/3+' треугольников. Объект добавлен в сцену.';
+    toast('3D-сетка создана: '+item.name+'. Доступен экспорт GLB/OBJ/STL.','success');
+  }catch(error){
+    $('reconstruct-status').textContent='Не получилось: '+error.message;
+    toast('Реконструкция: '+error.message+'. Проверьте память и доступ к CDN / Hugging Face.','error');
+  }finally{
+    state.depthRunning=false;
+    $('reconstruct-cancel').classList.add('hidden');
+    setBusy(false);
   }
 }
 async function importVideo(file) {
@@ -267,6 +303,8 @@ function bind(){
   $('library-btn').onclick=()=>{$('library-dialog').showModal();renderLibrary()};
   $('library-close-btn').onclick=()=>$('library-dialog').close();
   $('library-save-btn').onclick=saveLibraryCopy;
+  $('reconstruct-selected').onclick=reconstructSelectedPhoto;
+  $('reconstruct-cancel').onclick=()=>{if(!state.depthRunning)return;state.depthRunning=false;cancelDepth();$('reconstruct-status').textContent='Реконструкция отменена. Уже созданные модели сохранены.';}
   $('import-cancel-btn').onclick=()=>{state.importController?.abort();$('import-cancel-btn').disabled=true;$('import-status-text').textContent='Остановка после текущего файла…'};
   $('video-import-btn').onclick=()=>$('video-file').click();
   $('video-file').onchange=e=>importVideo(e.target.files[0]);

@@ -27,9 +27,14 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [ ] Project quotas, deduplication and storage-usage view
 - [ ] Point-cloud tools (crop, align, measure and cleanup)
 
-## M3 — Real reconstruction (separate optional compute engine)
-- [ ] Define job protocol, input validation and progress events
-- [ ] Local worker connector, not embedded in GitHub Pages
+## M3 — Browser-first reconstruction (no mandatory server)
+- [x] Browser ONNX relative-depth inference (Depth Anything V2 Small q8/WASM) in a dedicated Worker
+- [x] Generate triangulated textured 2.5D Mesh from a selected photo and serialize to GLB in Object Studio
+- [x] Reconstruct/cancel UI, model download status and depth-map preview
+- [ ] Real multi-view camera registration (SfM), dense geometry fusion (MVS), and proper mesh extraction from overlapping photos
+- [ ] Quantitative browser smoke test with a real ONNX inference and model/GLB roundtrip on published Pages
+- [ ] Define optional full reconstruction job protocol and progress events
+- [ ] Optional local engine connector for GPU-grade multi-view workflows
 - [ ] COLMAP SfM/MVS mesh reconstruction
 - [ ] Texture baking, masking and reconstruction diagnostics
 - [ ] Gaussian Splatting training and preview
@@ -48,7 +53,7 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - Similarity and sharpness indicators are approximate warnings, not certainty about overlap or success of SfM.
 
 ## Explicit limits in M1
-- Photograph upload does **not** create real 3D reconstruction yet.
+- A selected photograph can now generate a real textured mesh based on **estimated relative monocular depth**. It is a view-dependent 2.5D surface, not an accurate watertight object or room from multiple photos; batch SfM and Gaussian Splatting training remain planned.
 - glTF can use external resources when uploaded together and unique by filename. OBJ/MTL texture import is supported with matching files. Nested duplicate basenames are not supported. OBJ export doesn't include MTL; STL has no textures and is not guaranteed manifold.
 - The photo warnings are heuristics, not a photogrammetry success metric.
 - A local save can disappear when browser data is cleared; use ZIP export for backups.

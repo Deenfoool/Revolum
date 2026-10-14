@@ -2,7 +2,7 @@
 
 **Capture. Reconstruct. Create.** A browser-based studio for organizing photo scans, inspecting and editing 3D assets, and exporting scenes.
 
-Revolum is a static-first project designed for GitHub Pages. The first milestone offers a real Three.js workspace, a photo-set quality checker and local JPEG EXIF inspector (including GPS presence warnings), with camera capture and local video-to-frame extraction, mesh import/edit/export, batch import progress and cancellation between files, and local project persistence. **It does not claim to reconstruct a mesh from photographs in the browser yet**; photogrammetry and Gaussian Splatting are tracked as future optional compute-engine integrations.
+Revolum is a static-first project designed for GitHub Pages. The first milestone offers a real Three.js workspace, a photo-set quality checker and local JPEG EXIF inspector (including GPS presence warnings), with camera capture and local video-to-frame extraction, mesh import/edit/export, batch import progress and cancellation between files, and local project persistence. **Photo Scan now performs local single-image depth reconstruction** using Depth Anything V2 Small (ONNX) and builds a real textured 2.5D mesh from the predicted relative depth. Multi-view photogrammetry, exact hidden geometry, metric scale, automatic camera registration, and trained Gaussian Splatting are not implemented.
 
 See [ROADMAP.md](ROADMAP.md) for implemented and planned features.
 
@@ -12,11 +12,19 @@ Production entry: [`index.html`](index.html) at the repository root. GitHub Page
 
 Intended URL: https://deenfoool.github.io/Revolum/ (GitHub Pages source must be configured in repository settings). Paths in the entry page are relative to the repository subpath (`./styles.css`, `./src/main.js`, `./assets/favicon.svg`). Don't change them to domain-root paths (`/src/...`) or Pages will point at the wrong location.
 
-Unlike Safelight, this early prototype still loads pinned Three.js, Lucide and JSZip from jsDelivr; an internet connection and access to that CDN are currently required. Vendoring dependencies for fully local runtime is a separate roadmap item.
+Unlike Safelight, this early prototype still loads pinned Three.js, Lucide, JSZip and Transformers.js from jsDelivr. The model files download once from Hugging Face and are cached when supported. Both public static hosts require internet access on first use. **Photos are processed locally: there is no inference or upload endpoint.** Vendoring all dependencies for fully offline runtime remains a future task. Vendoring dependencies for fully local runtime is a separate roadmap item.
 
 ## Development
 
 Run a static server in this repository (ES modules need HTTP): `python3 -m http.server 8080`, then open `http://localhost:8080`. The app uses pinned Three.js and Lucide/JSZip CDN dependencies; the first load needs internet access.
+
+## Single-photo reconstruction (static GitHub Pages, no compute server)
+
+1. In **Photo Scan**, upload an image or capture a photo. Select its thumbnail.
+2. Select mesh detail and depth strength, then click **Создать 3D из выбранного фото**. The browser downloads the ~27 MB q8 ONNX model and Transformers.js runtime on first use. Inference runs in a dedicated Web Worker on the user's CPU via WASM (WebGPU is not required).
+3. Revolum constructs a real triangulated textured surface from the network's relative depth map, serializes it as a GLB, and adds it to **Object Studio**. You can transform it, combine independently generated surfaces manually, save the project, or export GLB / geometry-only OBJ or STL.
+
+This is **2.5D, not full multi-view SfM/MVS**. No back/hidden surfaces, watertight mesh, or real-world dimensional accuracy can be inferred from one image. Separate photos are **not auto-registered or fused**. Gaussian Splatting training is still a separate roadmap item. The user can stop inference (this terminates and resets the worker). Unsupported browsers, insufficient memory and blocked CDN/model hosts produce an explicit error rather than a fabricated mesh.
 
 ## Formats
 

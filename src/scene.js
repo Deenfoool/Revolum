@@ -162,6 +162,18 @@ export class Studio3D {
     if(!options.silent){this.select(item.id);this.frame(item.id)}
     return item;
   }
+  async addDepthReconstruction({geometry,texture,name,sourcePhoto}){
+    const material=new THREE.MeshStandardMaterial({map:texture,metalness:0,roughness:1,side:THREE.DoubleSide});
+    const mesh=new THREE.Mesh(geometry,material);mesh.name='Predicted visible surface';
+    const root=new THREE.Group();root.name=name;root.add(mesh);
+    let binary;
+    try{binary=await new GLTFExporter().parseAsync(root,{binary:true,onlyVisible:true,maxTextureSize:2048})}
+    catch(error){disposeTree(root);throw Error('Не удалось сохранить реконструкцию в GLB: '+error.message)}
+    const safe=(name||'depth-mesh').replace(/[^a-z0-9а-яё_-]+/gi,'-').slice(0,70)||'depth-mesh';
+    const sourceFile=new File([binary],safe+'.glb',{type:'model/gltf-binary'});
+    const item=this._register(root,{kind:'model',name,sourceFile,method:'monocular-depth'});
+    this.select(item.id);this.frame(item.id);return item;
+  }
   rename(id,name){const item=this.items.get(id);if(!item)return;item.name=(name||'Object').trim().slice(0,70);item.root.name=item.name;this.notify()}
   select(id){if(id&&!this.items.has(id))id=null;this.selectedId=id;this.transform.detach();if(id)this.transform.attach(this.items.get(id).root);this.hooks.onSelect?.(id)}
   remove(id){const item=this.items.get(id);if(!item)return;if(this.selectedId===id)this.select(null);this.content.remove(item.root);disposeTree(item.root);for(const url of item.resourceUrls||[])URL.revokeObjectURL(url);this.items.delete(id);this.notify()}
