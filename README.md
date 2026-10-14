@@ -2,7 +2,7 @@
 
 **Capture. Reconstruct. Create.** A browser-based studio for organizing photo scans, inspecting and editing 3D assets, and exporting scenes.
 
-Revolum is a static-first project designed for GitHub Pages. The first milestone offers a real Three.js workspace, a photo-set quality checker and local JPEG EXIF inspector (including GPS presence warnings), with camera capture and local video-to-frame extraction, mesh import/edit/export, batch import progress and cancellation between files, and local project persistence. **Photo Scan now performs local single-image depth reconstruction** using Depth Anything V2 Small (ONNX) and builds a real textured 2.5D mesh from the predicted relative depth. Multi-view Structure-from-Motion, automatic camera registration and genuine WebGPU-trained Gaussian Splatting are now available as a separate Photo Scan mode using pinned, MIT-licensed Splat.js. Multi-view **watertight polygonal mesh/MVS** and absolute metric scale are not yet implemented.
+Revolum is a static-first project designed for GitHub Pages. The first milestone offers a real Three.js workspace, a photo-set quality checker and local JPEG EXIF inspector (including GPS presence warnings), with camera capture and local video-to-frame extraction, mesh import/edit/export, batch import progress and cancellation between files, and local project persistence. **Photo Scan now performs local single-image depth reconstruction** using Depth Anything V2 Small (ONNX) and builds a real textured 2.5D mesh from the predicted relative depth. Multi-view Structure-from-Motion, automatic camera registration and genuine WebGPU-trained Gaussian Splatting are now available as a separate Photo Scan mode using pinned, MIT-licensed Splat.js. Experimental depth-assisted multi-view polygonal TSDF mesh extraction is available; guaranteed watertight geometry, traditional PatchMatch MVS and absolute metric scale remain open.
 
 See [ROADMAP.md](ROADMAP.md) for implemented and planned features.
 
@@ -42,6 +42,17 @@ The multi-view engine validates input counts/sizes before processing and checks 
 ## Point-cloud cleanup (M2)
 
 Imported PLY point clouds (including Revolum's sparse SfM output) now display their point counts in Object Studio. Select a cloud and choose **Voxel-прореживание** to keep one original point per spatial cell. Cell size is a percentage of the cloud's **local bounding-box diagonal**; SfM has arbitrary, not metric, scale. The edited result is re-encoded as a binary PLY source, so local autosave, named projects, ZIP backups, Undo/Redo, and subsequent restores retain the reduced points. This is downsampling, not dense surface reconstruction, noise removal, or an edit to Gaussian opacity/SH data. Gaussian PLY remains a separate representation and must not be treated as editable polynomial geometry.
+
+## Experimental multi-view polygonal Mesh (browser-local)
+
+After the regular multi-view SfM step has solved the camera poses, **Построить общий Mesh** creates a depth-assisted **TSDF** mesh from the *same* registered photo set. Choose 40 / 56 / 72 volume detail and 6 / 10 / 16 maximum registered views. The implementation:
+
+1. Runs Depth Anything V2 inference independently on selected registered source photos, in-browser WASM, with progress and cancellation. The model is downloaded on first use.
+2. Reprojects SfM's 3D landmarks into each solved camera, robustly fits each predicted *relative* depth map to actual SfM camera Z, and rejects poorly calibrated maps. It tolerates inverted predictor depth conventions.
+3. Fuses only grid regions observed by **at least two** aligned cameras into a bounded, signed-distance volume, and extracts an **indexed polygon mesh** with marching tetrahedra. Vertex colours are sampled from the source photographs where their depths agree with the reconstructed surface.
+4. Saves the result as a real GLB model in Object Studio (including its source file for Undo/Redo and ZIP persistence). **Download Mesh (.glb)** and **Download Mesh (.ply)** are available after a successful build.
+
+This is an *experimental depth-assisted MVS approximation*, not a COLMAP PatchMatch reconstruction and not derived by transforming 3DGS into triangles. It requires at least three successfully calibrated views. It covers only visible, corroborated regions; open boundaries, incomplete surfaces, arbitrary SfM scale and ML-depth errors are expected. It does not promise watertightness, texture-atlas UV baking or print readiness. Cloud/GPU compute backends are **not** required; volumetric fusion is handled in a Worker with a hard grid/triangle cap. Do not treat the output coordinates as metres without external calibration.
 
 ## Formats
 

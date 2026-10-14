@@ -94,6 +94,19 @@
               <canvas id="mv-canvas" width="960" height="540" aria-label="Результат Gaussian Splatting WebGPU"></canvas>
               <div class="mv-view-foot"><span id="mv-stats">SfM</span><span>Мышью вращать · колесом приближать · масштаб сцены относительный</span></div>
             </div>
+            <div id="mvs-panel" class="mvs-panel">
+              <div class="reconstruction-heading"><div><span class="overline">DEPTH FUSION / POLYGON MESH · EXPERIMENTAL</span><h3>Многокадровый Mesh (TSDF)</h3><p>После SfM использует камеры и общие точки для согласования нескольких карт глубины. Подтверждает поверхности соседними ракурсами, объединяет TSDF и извлекает полигональную сетку с цветами вершин. Добавляет результат в Object Studio как GLB.</p></div><span class="reconstruction-badge">MVS / LOCAL</span></div>
+              <div class="mvs-controls">
+                <label>Разрешение объёма<select id="mvs-resolution"><option value="40">Черновик · 40³</option><option value="56" selected>Обычное · 56³</option><option value="72">Высокое · 72³</option></select></label>
+                <label>Максимум камер<select id="mvs-views"><option value="6">6 ракурсов</option><option value="10" selected>10 ракурсов</option><option value="16">16 ракурсов</option></select></label>
+                <button class="btn btn-primary" id="mvs-start" disabled><i data-lucide="box"></i> Построить общий Mesh</button>
+                <button class="btn btn-danger hidden" id="mvs-cancel"><i data-lucide="x"></i> Отменить</button>
+              </div>
+              <p class="reconstruction-status" id="mvs-status" role="status" aria-live="polite">Сначала завершите расчёт камер в многокадровом режиме.</p>
+              <progress class="hidden" id="mvs-progress" max="100" value="0" aria-label="Прогресс Dense Mesh"></progress>
+              <div id="mvs-downloads" class="mv-exports hidden"><button class="btn btn-outline" id="mvs-download-glb"><i data-lucide="download"></i> Скачать Mesh (.glb)</button><button class="btn btn-outline" id="mvs-download-ply"><i data-lucide="download"></i> Скачать Mesh (.ply)</button></div>
+              <p class="reconstruction-disclaimer">Геометрия вычисляется из нескольких ML-карт относительной глубины, привязанных к SfM. Это реальная полигональная реконструкция видимых общих поверхностей, но не COLMAP PatchMatch MVS: не гарантируется метрический масштаб, замкнутость Mesh, скрытые стороны или пригодность к 3D-печати. Требуются минимум 3 успешно согласованные камеры. Первый расчёт скачивает модель глубины; вычисления локальны.</p>
+            </div>
             <div class="mv-exports" id="mv-exports">
               <button id="mv-export-ply" class="btn btn-outline" disabled><i data-lucide="download"></i> Экспорт обученных сплатов (.ply)</button>
               <button id="mv-export-bundle" class="btn btn-primary" disabled><i data-lucide="archive"></i> Пакет скана (.zip)</button>
@@ -102,7 +115,7 @@
               <button id="mv-cloud-to-scene" class="btn btn-outline" disabled><i data-lucide="boxes"></i> Облако → Object Studio</button>
             </div>
             <p id="mv-backup-warning" class="mv-backup-warning hidden">Обученная сцена пока находится в памяти видеокарты. Скачайте PLY или пакет ZIP перед закрытием страницы или переключением проекта.</p>
-            <p class="reconstruction-disclaimer">Режим использует полноценный браузерный движок <a href="https://github.com/arrival-space/splat.js" target="_blank" rel="noopener noreferrer">Splat.js</a>, зафиксированный в <code>vendor/splatjs</code>. WebGPU и видеопамять обязательны. Автоматическая регистрация может не получиться на бликующих, однотонных или недостаточно перекрывающихся снимках. Результат 3DGS — обученная сцена в PLY, а не полигональный Mesh; для геометрии сохраняется отдельный режим по одному снимку ниже.</p>
+            <p class="reconstruction-disclaimer">Режим использует полноценный браузерный движок <a href="https://github.com/arrival-space/splat.js" target="_blank" rel="noopener noreferrer">Splat.js</a>, зафиксированный в <code>vendor/splatjs</code>. WebGPU и видеопамять обязательны. Автоматическая регистрация может не получиться на бликующих, однотонных или недостаточно перекрывающихся снимках. 3DGS экспортируется как обученная Gaussian-сцена PLY; для общей полигональной поверхности используйте отдельный многокадровый TSDF Mesh выше, для одного ракурса — режим ниже.</p>
           </div>
           <div class="reconstruction-panel" id="reconstruction-panel">
             <div class="reconstruction-heading"><div><span class="overline">LOCAL AI / RECONSTRUCTION</span><h3>Фото → настоящая 3D-сетка</h3><p>Выберите фото выше. Depth Anything V2 рассчитает относительную глубину прямо в браузере, Revolum построит текстурированную поверхность и добавит её в Object Studio.</p></div><span class="reconstruction-badge">BROWSER ML</span></div>

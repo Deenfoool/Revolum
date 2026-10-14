@@ -1,11 +1,11 @@
 {
   "name": "revolum",
   "private": true,
-  "version": "0.3.3",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check src/main.js && node --check src/scene.js && node --check src/photos.js && node --check src/storage.js && node --check src/capture.js && node --check src/exif.js && node --check src/depth-worker.js && node --check src/depth-grid.js && node --check src/depth-reconstruct.js && node --check src/multiview.js && node --check src/scan-package.js && node --check src/scan-budget.js && node --check src/pointcloud.js"
+    "check": "node --check src/main.js && node --check src/scene.js && node --check src/photos.js && node --check src/storage.js && node --check src/capture.js && node --check src/exif.js && node --check src/depth-worker.js && node --check src/depth-grid.js && node --check src/depth-reconstruct.js && node --check src/multiview.js && node --check src/scan-package.js && node --check src/scan-budget.js && node --check src/pointcloud.js && node --check src/mvs-core.js && node --check src/mvs-worker.js && node --check src/mvs-job.js"
   },
-  "description": "Static-first SfM, browser-native 3D Gaussian Splatting and mesh studio"
+  "description": "Static-first multi-view 3DGS, SfM-aligned depth fusion, TSDF polygon mesh and asset studio"
 }

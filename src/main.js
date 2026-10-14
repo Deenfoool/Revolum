@@ -8,7 +8,7 @@ const icons=()=>window.lucide?.createIcons();
 const uid=()=>crypto.randomUUID?.()||'p'+Date.now()+Math.random().toString(36).slice(2);
 const state={name:'Untitled scan',photos:[],selectedPhotoId:null,mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve(),importController:null,depthRunning:false};
 let engine;
-let videoController=null,cameraStream=null,multiview=null,mvPending=false,mvCancelled=false,mvExported=false,mvPackaging=false,mvJobSettled=true;
+let videoController=null,cameraStream=null,multiview=null,mvPending=false,mvCancelled=false,mvExported=false,mvPackaging=false,mvJobSettled=true,denseJob=null,denseExport=null;
 function toast(message,type='info'){const item=document.createElement('div');item.className='toast '+type;item.textContent=message;$('toast-stack').appendChild(item);setTimeout(()=>item.remove(),5300)}
 const project=()=>({name:state.name,objects:engine.snapshot(),photos:state.photos.map(({url,...p})=>({...p}))});
 function status(label){$('save-state').innerHTML='<i data-lucide="hard-drive"></i> '+label;icons()}
@@ -17,6 +17,7 @@ async function saveNow(notify=true){clearTimeout(state.saveTimer);const snapshot
 function capture(){return project()}
 function commitHistory(before){state.history.push(before||capture());if(state.history.length>25)state.history.shift();state.redo=[]}
 async function restoreSnapshot(snapshot,notify=false){
+  if(denseJob?.busy)denseJob.cancel();
   if(multiview){await multiview.reset();multiview=null;resetMultiviewUi()}
   state.loading=true;
   try{state.name=snapshot.name||'Untitled scan';$('project-name').value=state.name;
@@ -120,7 +121,7 @@ function renderMode(){
   $('object-inspector').classList.toggle('hidden',photos);$('photo-inspector').classList.toggle('hidden',!photos);
   $('workspace-kicker').textContent=photos?'02 — PHOTO SCAN':'01 — OBJECT STUDIO';
   $('workspace-title').innerHTML=photos?'Capture the real world<span>.</span>':'Your digital workspace<span>.</span>';
-  $('workspace-description').textContent=photos?'Подготовьте фотонабор для будущей 3D-реконструкции.':'Исследуйте, редактируйте и экспортируйте 3D-объекты.';
+  $('workspace-description').textContent=photos?'Подготовьте фотонабор, создайте SfM/3DGS и общий многоракурсный Mesh.':'Исследуйте, редактируйте и экспортируйте 3D-объекты.';
   if(!photos)requestAnimationFrame(()=>engine.resize());
 }
 async function addModels(files){
@@ -210,6 +211,10 @@ function multiviewButtons(){
   $('mv-start').disabled=state.busy||mvPending||ready||state.photos.length<8||state.photos.length>120;
   $('mv-preset').disabled=state.busy||mvPending||ready;
   $('mv-memory-profile').disabled=state.busy||mvPending||ready;
+  $('mvs-start').disabled=!ready||state.busy||!!denseJob?.busy;
+  $('mvs-resolution').disabled=!ready||state.busy||!!denseJob?.busy;
+  $('mvs-views').disabled=!ready||state.busy||!!denseJob?.busy;
+  $('mvs-cancel').classList.toggle('hidden',!denseJob?.busy);
   icons();
 }
 function resetMultiviewUi(){
@@ -217,6 +222,9 @@ function resetMultiviewUi(){
   $('mv-progress').classList.add('hidden');$('mv-progress').value=0;
   $('mv-diagnostics').replaceChildren();$('mv-diagnostics').classList.add('hidden');
   $('mv-budget').textContent='';$('mv-budget').classList.add('hidden');
+  $('mvs-progress').classList.add('hidden');$('mvs-progress').value=0;
+  denseExport=null;$('mvs-downloads').classList.add('hidden');
+  $('mvs-status').textContent='Сначала завершите расчёт камер в многокадровом режиме.';
   mvExported=false;mvPackaging=false;
   $('mv-stats').textContent='SfM';$('mv-status').textContent='Нужен WebGPU и 8–120 перекрывающихся фотографий одной неподвижной сцены.';
   multiviewButtons();
@@ -264,10 +272,57 @@ async function startMultiview(){
   }finally{mvJobSettled=true;mvPending=false;mvCancelled=false;setBusy(false);multiviewButtons()}
 }
 async function newMultiview(){
+  if(denseJob?.busy)return;
   if(mvPending){cancelMultiview();return}
   if(multiview?.ready&&!mvExported&&!confirm('Обученный 3DGS результат ещё не экспортирован. Сбросить его без сохранения?'))return;
   try{await multiview?.reset()}catch(e){console.warn(e)}
   multiview=null;resetMultiviewUi();
+}
+async function startDenseMesh(){
+  if(state.busy||!multiview?.ready||denseJob?.busy)return;
+  const original=multiview;
+  const source=state.photos.map(p=>p.file);
+  const resolution=Number($('mvs-resolution').value),maxViews=Number($('mvs-views').value);
+  setBusy(true);$('mvs-start').disabled=true;$('mvs-cancel').disabled=false;$('mvs-cancel').classList.remove('hidden');
+  try{
+    const {DenseMeshJob}=await import('./mvs-job.js');
+    denseJob=new DenseMeshJob();
+    if(multiview.phase==='training')multiview.pause();
+    $('mvs-progress').classList.remove('hidden');$('mvs-progress').value=0;
+    $('mvs-status').textContent='Подготовка зарегистрированных камер…';
+    const result=await denseJob.run(original,source,{resolution,maxViews,onProgress:e=>{
+      if(e.message)$('mvs-status').textContent=e.message;
+      else if(e.stage==='fusion')$('mvs-status').textContent='Согласование глубины и TSDF: '+e.done+'/'+e.total;
+      else if(e.stage==='extract')$('mvs-status').textContent='Извлечение треугольников: '+e.done+'/'+e.total;
+      if(e.total&&e.done){
+        const base=e.stage==='depth'?0:e.stage==='fusion'?45:75,span=e.stage==='depth'?45:e.stage==='fusion'?30:25;
+        $('mvs-progress').value=Math.min(99,base+span*e.done/e.total);
+      }
+    }});
+    if(original!==multiview)throw Error('SfM-проект изменился во время обработки');
+    const {encodeDensePly}=await import('./mvs-core.js');
+    const ply=encodeDensePly(result);
+    const before=capture();
+    const name='Multi-view Mesh / '+state.name;
+    const item=await engine.addDenseMesh({...result,name});
+    denseExport={glb:item.sourceFile,ply,name:safeFilename(state.name)};
+    $('mvs-downloads').classList.remove('hidden');
+    commitHistory(before);queueSave();setMode('object');
+    $('mvs-progress').value=100;
+    $('mvs-status').textContent='Готово: '+result.stats.vertices.toLocaleString('ru-RU')+' вершин · '+result.stats.triangles.toLocaleString('ru-RU')+' треугольников · '+result.stats.calibrated+' согласованных камер. Пропущены: '+(result.stats.skipped.length?result.stats.skipped.map(v=>v.name+' ('+v.reason+')').join('; '):'нет')+'. Сетка может иметь открытые края.';
+    toast('Общий полигональный Mesh добавлен в Object Studio: '+item.name,'success');
+  }catch(error){
+    $('mvs-status').textContent='Не удалось построить Mesh: '+error.message;
+    toast('Dense Mesh: '+error.message,'error');
+  }finally{
+    denseJob=null;setBusy(false);multiviewButtons();
+    $('mvs-cancel').classList.add('hidden');
+  }
+}
+function cancelDenseMesh(){
+  if(!denseJob?.busy)return;
+  denseJob.cancel();$('mvs-cancel').disabled=true;
+  $('mvs-status').textContent='Остановка расчёта Mesh и освобождение памяти…';
 }
 async function downloadMultiview(kind){
   if(!multiview?.ready)return;
@@ -443,6 +498,10 @@ function bind(){
   $('library-save-btn').onclick=saveLibraryCopy;
   $('reconstruct-selected').onclick=reconstructSelectedPhoto;
   $('mv-start').onclick=startMultiview;
+  $('mvs-start').onclick=startDenseMesh;
+  $('mvs-cancel').onclick=cancelDenseMesh;
+  $('mvs-download-glb').onclick=()=>{if(denseExport)download(denseExport.glb,denseExport.name+'-dense.glb')};
+  $('mvs-download-ply').onclick=()=>{if(denseExport)download(denseExport.ply,denseExport.name+'-dense.ply')};
   $('mv-cancel').onclick=cancelMultiview;
   $('mv-export-bundle').onclick=exportMultiviewBundle;
   $('mv-new').onclick=newMultiview;

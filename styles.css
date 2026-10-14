@@ -114,3 +114,15 @@
 .cloud-voxel-select{display:block;width:100%;border:1px solid #435674;background:#222e42;color:#dce7f8;border-radius:7px;padding:9px;margin:8px 0 11px;font:inherit;font-size:11px}
 #cloud-tools .quality-note{font-size:10px;line-height:1.65;color:#9eafc9}
 #cloud-reduce{justify-content:center;gap:7px}
+
+/* Depth-assisted multi-view TSDF extraction; preserves static Pages layout. */
+.mvs-panel{margin:15px 0;padding:20px;border:1px solid #55759c;background:linear-gradient(130deg,#1d3048,#15212f 70%);border-radius:10px}
+.mvs-panel .reconstruction-heading h3{margin:8px 0;font-size:17px}
+.mvs-controls{display:flex;gap:11px;align-items:end;flex-wrap:wrap;margin:16px 0 12px}
+.mvs-controls label{display:grid;gap:7px;color:#b8c8dc;font-size:10px}
+.mvs-controls select{background:#202d40;border:1px solid #4a6385;border-radius:7px;color:#e2eaf8;padding:9px}
+.mvs-panel .reconstruction-status{margin:9px 0;font-size:11px;line-height:1.6}
+#mvs-progress{display:block;width:100%;height:7px;accent-color:#9bbbe9;margin:9px 0}
+.mvs-panel .btn:disabled{opacity:.47}
+.mvs-panel .reconstruction-disclaimer{color:#a3b6cb}
+@media(max-width:580px){.mvs-panel{padding:13px}.mvs-controls label{flex:1}.mvs-controls select{width:100%;min-width:0}.mvs-controls button{flex:1}}

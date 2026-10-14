@@ -175,6 +175,22 @@ export class Studio3D {
     const item=this._register(root,{kind:'model',name,sourceFile,method:'monocular-depth'});
     this.select(item.id);this.frame(item.id);return item;
   }
+  async addDenseMesh({positions,indices,colors,name='Multi-view / Dense Mesh'}){
+    if(!positions?.length||positions.length%3||positions.length>1500000||!indices?.length||indices.length%3||indices.length>1200000||colors?.length!==positions.length)throw Error('Неверная геометрия плотного Mesh');
+    const geometry=new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
+    geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
+    geometry.setIndex(new THREE.BufferAttribute(indices,1));
+    geometry.computeVertexNormals();geometry.computeBoundingBox();geometry.computeBoundingSphere();
+    const material=new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:.92,side:THREE.DoubleSide});
+    const root=new THREE.Group();root.name=name;
+    const mesh=new THREE.Mesh(geometry,material);mesh.name='SfM-aligned multi-view TSDF surface';root.add(mesh);
+    let binary;try{binary=await new GLTFExporter().parseAsync(root,{binary:true,onlyVisible:true})}
+    catch(error){disposeTree(root);throw Error('Ошибка кодирования GLB: '+error.message)}
+    const sourceFile=new File([binary],(name||'dense-mesh').replace(/[^a-z0-9а-яё_-]+/gi,'-').slice(0,64)+'.glb',{type:'model/gltf-binary'});
+    const item=this._register(root,{kind:'model',name,sourceFile,method:'multiview-depth-tsdf'});
+    this.select(item.id);this.frame(item.id);return item;
+  }
   rename(id,name){const item=this.items.get(id);if(!item)return;item.name=(name||'Object').trim().slice(0,70);item.root.name=item.name;this.notify()}
   select(id){if(id&&!this.items.has(id))id=null;this.selectedId=id;this.transform.detach();if(id)this.transform.attach(this.items.get(id).root);this.hooks.onSelect?.(id)}
   remove(id){const item=this.items.get(id);if(!item)return;if(this.selectedId===id)this.select(null);this.content.remove(item.root);disposeTree(item.root);for(const url of item.resourceUrls||[])URL.revokeObjectURL(url);this.items.delete(id);this.notify()}

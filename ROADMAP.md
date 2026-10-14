@@ -44,12 +44,14 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [x] Downloadable scan ZIP snapshot (validated Gaussian PLY, sparse cloud, cameras, diagnostics)
 - [x] Cancel-before-load guard, export/data-loss warning and UI operation locks during bundle creation
 - [ ] Persist and restore optimizer/trainer state (current ZIP is an export snapshot, not a resumable training state)
-- [ ] Dense polygonal MVS mesh extraction / watertight reconstruction from overlapping photos
+- [x] Experimental dense polygonal Mesh: robustly SfM-align ML depth maps, multi-view TSDF fusion, marching-tetrahedra extraction, vertex colors, GLB/PLY export, cancellation and diagnostics
+- [ ] Traditional PatchMatch MVS, depth confidence/masking and guaranteed watertight/printable geometry
 - [ ] Quantitative browser smoke test with a real ONNX inference and model/GLB roundtrip on published Pages
 - [x] Local session pipeline with progress, cancellation, GPU device loss and stage/metric events
 - [ ] Optional local engine connector for GPU-grade multi-view workflows
 - [ ] COLMAP SfM/MVS mesh reconstruction
-- [ ] Texture baking, masking and reconstruction diagnostics
+- [x] Multi-view vertex-color sampling and skipped-camera calibration diagnostics
+- [ ] UV texture-atlas baking, semantic masking and deeper reconstruction diagnostics
 - [x] Gaussian Splatting training and preview via vendored Splat.js (requires WebGPU)
 - [ ] WebGPU browser smoke test on real photo sets and exported PLY visual/format checks (structure/header checks implemented)
 - [ ] GPU cloud engine as later optional deployment
@@ -67,7 +69,7 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - Similarity and sharpness indicators are approximate warnings, not certainty about overlap or success of SfM.
 
 ## Explicit limits in M1
-- Single photo: estimated relative monocular depth produces a view-dependent 2.5D mesh. Multi photo: actual SfM and learned 3D Gaussian splats run in WebGPU. Neither guarantees watertight multi-view polygonal geometry or calibrated real-world scale.
+- Single photo: estimated relative monocular depth produces a 2.5D mesh. Multi photo: SfM and learned 3D Gaussian splats run in WebGPU; separate experimental TSDF fusion creates polygonal geometry from SfM-calibrated per-photo ML depths. None guarantees watertightness or calibrated metric scale.
 - glTF can use external resources when uploaded together and unique by filename. OBJ/MTL texture import is supported with matching files. Nested duplicate basenames are not supported. OBJ export doesn't include MTL; STL has no textures and is not guaranteed manifold.
 - The photo warnings are heuristics, not a photogrammetry success metric.
 - A local save can disappear when browser data is cleared; use ZIP export for backups.
