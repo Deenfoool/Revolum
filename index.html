@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d1017">
+  <meta name="description" content="Revolum — студия подготовки фотосканов и редактирования 3D-сцен прямо в браузере.">
+  <title>Revolum — Capture. Reconstruct. Create.</title>
+  <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+  <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Revolum home">
+      <span class="brand-mark"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M20 3 35 11.5v17L20 37 5 28.5v-17L20 3Z" stroke="currentColor" stroke-width="1.8"/><path d="M20 3v17m0 0 15 8.5M20 20 5 28.5M20 20 35 11.5M20 20 5 11.5M20 20v17" stroke="currentColor" stroke-width="1.6"/></svg></span>
+      <span class="brand-name">revolum<span class="brand-dot">.</span><small>STUDIO / 01</small></span>
+    </a>
+    <span class="top-divider"></span>
+    <div class="project-title"><span class="project-label">PROJECT</span><input id="project-name" aria-label="Название проекта" maxlength="56" value="Untitled scan"><span id="save-state" class="save-state"><i data-lucide="cloud-off"></i> Локально</span></div>
+    <div class="top-actions">
+      <span class="privacy-tag"><i data-lucide="shield-check"></i> PRIVATE WORKSPACE</span>
+      <button class="btn btn-quiet" id="help-btn" title="Горячие клавиши"><i data-lucide="circle-help"></i><span class="desktop-label">Помощь</span></button>
+      <button class="btn btn-quiet" id="save-btn" title="Сохранить в браузере"><i data-lucide="save"></i><span class="desktop-label">Сохранить</span></button>
+      <button class="btn btn-primary" id="export-btn"><i data-lucide="arrow-up-right"></i> Экспорт</button>
+    </div>
+  </header>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="eyebrow">WORKSPACE <span>01 / 02</span></div>
+        <div class="mode-select">
+          <button id="mode-object" class="mode-btn active" data-mode="object"><i data-lucide="box"></i><span><strong>Object Studio</strong><small>Редактор 3D-сцены</small></span><i data-lucide="chevron-right" class="mode-arrow"></i></button>
+          <button id="mode-photos" class="mode-btn" data-mode="photos"><i data-lucide="scan-line"></i><span><strong>Photo Scan</strong><small>Подготовка фотосета</small></span><i data-lucide="chevron-right" class="mode-arrow"></i></button>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <div class="section-title"><span id="assets-title">SCENE GRAPH</span><span class="count-pill" id="asset-count">0</span></div>
+        <div id="object-list" class="item-list" aria-label="Объекты сцены"></div>
+        <div id="photo-side-list" class="item-list hidden" aria-label="Фотографии"></div>
+      </div>
+      <div class="sidebar-bottom">
+        <button id="import-model-btn" class="btn btn-outline btn-full"><i data-lucide="package-plus"></i> Импорт модели</button>
+        <button id="import-photos-btn" class="btn btn-outline btn-full hidden"><i data-lucide="images"></i> Добавить фотографии</button>
+        <div class="storage-note"><i data-lucide="hard-drive"></i><span>Файлы остаются на устройстве. Экспортируйте ZIP для резервной копии.</span></div>
+        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.1.0</span></div>
+      </div>
+    </aside>
+    <main class="main-area">
+      <div class="workspace-head">
+        <div class="workspace-heading"><span class="overline" id="workspace-kicker">01 — OBJECT STUDIO</span><h1 id="workspace-title">Your digital workspace<span>.</span></h1><p id="workspace-description">Исследуйте, редактируйте и экспортируйте 3D-объекты.</p></div>
+        <div class="head-actions"><button class="btn btn-quiet" id="new-btn"><i data-lucide="file-plus-2"></i> Новый</button><button class="btn btn-quiet" id="restore-btn"><i data-lucide="folder-open"></i> Открыть локальный</button><button class="btn btn-quiet" id="open-zip-btn"><i data-lucide="file-archive"></i> ZIP-проект</button></div>
+      </div>
+      <div class="editor-area" id="editor-area">
+        <div class="viewport-toolbar" id="viewport-toolbar">
+          <div class="tool-cluster"><span class="toolbar-label">TOOLS</span><button class="icon-btn active" id="tool-move" title="Перемещение (G)"><i data-lucide="move-3d"></i></button><button class="icon-btn" id="tool-rotate" title="Вращение (R)"><i data-lucide="rotate-3d"></i></button><button class="icon-btn" id="tool-scale" title="Масштаб (S)"><i data-lucide="scaling"></i></button><span class="mini-divider"></span><button class="icon-btn" id="add-shape" title="Добавить примитив"><i data-lucide="shapes"></i></button><button class="icon-btn" id="delete-object" title="Удалить объект (Delete)"><i data-lucide="trash-2"></i></button></div>
+          <div class="tool-cluster right-tools"><span class="toolbar-label">VIEW</span><button class="view-btn active" data-view="perspective">3D</button><button class="view-btn" data-view="front">FRONT</button><button class="view-btn" data-view="top">TOP</button><button class="view-btn" data-view="right">SIDE</button><button class="icon-btn" id="frame-btn" title="Центрировать (F)"><i data-lucide="focus"></i></button><button class="icon-btn" id="shot-btn" title="Снимок PNG"><i data-lucide="camera"></i></button></div>
+        </div>
+        <section id="viewport-section" class="viewport-section" aria-label="3D редактор">
+          <div id="viewport" class="viewport"></div>
+          <div class="viewport-meta"><span class="live-dot"></span> LIVE VIEWPORT <span class="meta-divider">/</span> WEBGL</div>
+          <div class="axis-indicator">X <span>·</span> Y <span>·</span> Z</div>
+          <div id="empty-scene" class="empty-scene hidden"><div class="empty-icon"><i data-lucide="box"></i></div><h2>Начните с объекта</h2><p>Перетащите сюда GLB, OBJ, STL или PLY<br>или добавьте базовую фигуру.</p><button class="btn btn-primary" id="empty-import-btn"><i data-lucide="upload"></i> Импортировать модель</button></div>
+          <div id="drop-overlay" class="drop-overlay hidden"><i data-lucide="upload-cloud"></i><strong>Отпустите файлы</strong><span>Модели или фотографии</span></div>
+          <div class="viewport-foot"><span><i data-lucide="mouse-pointer-2"></i> ЛКМ — выбор / вращение · Колесо — масштаб · ПКМ — панорама</span><span id="viewport-stats">0 OBJECTS</span></div>
+        </section>
+        <section id="photo-section" class="photo-section hidden">
+          <div class="photo-intro"><div><div class="tiny-label"><span class="live-dot"></span> SCAN INPUT / LOCAL</div><h2>Сначала снимки.<br><em>Потом геометрия.</em></h2><p>Снимайте объект по кругу с перекрытием кадров, загрузите фотографии и проверьте готовность набора. Изображения не отправляются на сервер.</p><button class="btn btn-primary" id="photo-import-hero"><i data-lucide="images"></i> Выбрать фотографии</button></div><div class="scan-illustration" aria-hidden="true"><div class="scan-ring scan-ring-one"></div><div class="scan-ring scan-ring-two"></div><div class="scan-core"><i data-lucide="scan"></i></div><span class="scan-point p1"></span><span class="scan-point p2"></span><span class="scan-point p3"></span><span class="scan-point p4"></span></div></div>
+          <div class="scan-stats"><div><small>IMAGES</small><strong id="photo-stat-count">00</strong></div><div><small>RESOLUTION FLAGS</small><strong id="photo-stat-resolution">00</strong></div><div><small>EXPOSURE FLAGS</small><strong id="photo-stat-exposure">00</strong></div><div><small>ESTIMATED STORAGE</small><strong id="photo-stat-size">0 MB</strong></div></div>
+          <div class="scan-board"><div class="scan-board-heading"><div><span class="overline">INPUT / IMAGE SET</span><h3>Фотографии <span id="photo-count-header">(0)</span></h3></div><button class="btn btn-quiet" id="photo-add-inline"><i data-lucide="plus"></i> Добавить</button></div><div id="photo-grid" class="photo-grid"><div class="photo-empty"><i data-lucide="image-plus"></i><strong>Пока нет фотографий</strong><span>JPEG, PNG, WebP или HEIC (если браузер поддерживает декодирование)</span></div></div></div>
+          <div class="engine-note"><i data-lucide="cpu"></i><div><strong>3D Reconstruction — следующий этап</strong><p>Сейчас работает импорт и анализ фотосета. Получение реального Mesh / Gaussian Splatting потребует отдельного локального или облачного движка. Загруженные фото не превращаются в фиктивную 3D-модель.</p></div><span class="planned-tag">PLANNED</span></div>
+        </section>
+      </div>
+      <div class="dock" id="dock">
+        <div class="dock-title"><div><span class="overline">ASSET LIBRARY</span><strong>Фотосет <span id="dock-photo-count">0</span></strong></div><button id="dock-add-btn" class="icon-btn" title="Добавить фото"><i data-lucide="plus"></i></button></div>
+        <div class="filmstrip" id="filmstrip"><span class="filmstrip-empty">Добавьте фотографии для нового скана <i data-lucide="arrow-right"></i></span></div>
+      </div>
+    </main>
+    <aside class="inspector">
+      <div class="inspector-title"><span>INSPECTOR</span><i data-lucide="sliders-horizontal"></i></div>
+      <div id="object-inspector">
+        <div class="inspector-placeholder" id="inspector-empty"><i data-lucide="mouse-pointer-click"></i><strong>Ничего не выбрано</strong><p>Выберите объект в сцене или в списке слева, чтобы изменить его параметры.</p></div>
+        <div id="inspector-fields" class="hidden">
+          <div class="inspector-block"><div class="overline">SELECTED ASSET</div><input class="inspector-name" id="selected-name" maxlength="70" aria-label="Имя объекта"><div class="asset-kind" id="selected-kind">MESH OBJECT</div></div>
+          <div class="inspector-block"><div class="block-header"><span>TRANSFORM</span><button class="icon-btn icon-btn-sm" id="reset-transform" title="Сбросить трансформации"><i data-lucide="rotate-ccw"></i></button></div><label class="field-label">Position <span>METERS / SCENE UNITS</span></label><div class="vector-fields" data-group="position"><label><b>X</b><input type="number" step="0.1" data-vector="position" data-axis="x" aria-label="Position X"></label><label><b>Y</b><input type="number" step="0.1" data-vector="position" data-axis="y" aria-label="Position Y"></label><label><b>Z</b><input type="number" step="0.1" data-vector="position" data-axis="z" aria-label="Position Z"></label></div><label class="field-label">Rotation <span>DEGREES</span></label><div class="vector-fields" data-group="rotation"><label><b>X</b><input type="number" step="1" data-vector="rotation" data-axis="x" aria-label="Rotation X"></label><label><b>Y</b><input type="number" step="1" data-vector="rotation" data-axis="y" aria-label="Rotation Y"></label><label><b>Z</b><input type="number" step="1" data-vector="rotation" data-axis="z" aria-label="Rotation Z"></label></div><label class="field-label">Scale <span>FACTOR</span></label><div class="vector-fields" data-group="scale"><label><b>X</b><input type="number" step="0.1" data-vector="scale" data-axis="x" aria-label="Scale X"></label><label><b>Y</b><input type="number" step="0.1" data-vector="scale" data-axis="y" aria-label="Scale Y"></label><label><b>Z</b><input type="number" step="0.1" data-vector="scale" data-axis="z" aria-label="Scale Z"></label></div></div>
+          <div class="inspector-block"><div class="block-header"><span>GEOMETRY</span></div><div class="property-row"><span>Meshes</span><strong id="detail-meshes">—</strong></div><div class="property-row"><span>Triangles</span><strong id="detail-triangles">—</strong></div><div class="property-row"><span>Size (local)</span><strong id="detail-size">—</strong></div></div>
+          <div class="inspector-block"><button id="inspector-delete" class="btn btn-danger btn-full"><i data-lucide="trash-2"></i> Удалить объект</button></div>
+        </div>
+      </div>
+      <div id="photo-inspector" class="hidden"><div class="inspector-block"><div class="overline">PHOTO SCAN GUIDE</div><h3>Хороший фотосет — половина результата.</h3><div class="guide-step"><b>01</b><span>Матовая поверхность и равномерный рассеянный свет.</span></div><div class="guide-step"><b>02</b><span>Обойдите предмет в 2–3 ряда по высоте.</span></div><div class="guide-step"><b>03</b><span>Сохраняйте большое перекрытие соседних кадров.</span></div><div class="guide-step"><b>04</b><span>Избегайте смазанных фото, пересветов и изменяющегося фона.</span></div></div><div class="inspector-block"><div class="overline">QUALITY REPORT</div><p class="quality-note" id="quality-overview">Добавьте фото — мы проверим разрешение и приблизительную экспозицию. Проверка не гарантирует успешную реконструкцию.</p><button class="btn btn-outline btn-full" id="analyze-btn"><i data-lucide="scan-eye"></i> Проверить набор</button></div></div>
+      <div class="inspector-bottom"><div class="made-for"><span class="small-dot"></span> BUILT FOR THE REAL WORLD</div><span>REVOLUM / 2026</span></div>
+    </aside>
+  </div>
+</div>
+<input type="file" id="model-file" accept=".glb,.gltf,.obj,.stl,.ply" multiple hidden>
+<input type="file" id="photo-file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" multiple hidden>
+<input type="file" id="project-file" accept=".zip" hidden>
+<dialog id="export-dialog" class="modal"><form method="dialog"><div class="modal-heading"><div><div class="overline">DELIVER YOUR WORK</div><h2>Экспорт проекта<span>.</span></h2><p>Выберите формат готовой 3D-сцены или сохраните все исходные файлы.</p></div><button class="icon-btn close-modal" value="cancel" aria-label="Закрыть"><i data-lucide="x"></i></button></div><div class="export-options"><button type="button" class="export-choice" data-export="glb"><i data-lucide="box"></i><span><strong>GLB <em>Recommended</em></strong><small>Сцена, геометрия и совместимые материалы</small></span><i data-lucide="arrow-down-to-line"></i></button><button type="button" class="export-choice" data-export="obj"><i data-lucide="layers-3"></i><span><strong>OBJ</strong><small>Только геометрия, без MTL и текстур</small></span><i data-lucide="arrow-down-to-line"></i></button><button type="button" class="export-choice" data-export="stl"><i data-lucide="printer"></i><span><strong>STL</strong><small>Геометрия без цветов; печатоспособность не проверена</small></span><i data-lucide="arrow-down-to-line"></i></button><button type="button" class="export-choice" data-export="zip"><i data-lucide="archive"></i><span><strong>Project ZIP</strong><small>Исходные фото, модели и манифест для повторного импорта</small></span><i data-lucide="arrow-down-to-line"></i></button></div></form></dialog>
+<dialog id="help-dialog" class="modal"><form method="dialog"><div class="modal-heading"><div><div class="overline">QUICK REFERENCE</div><h2>Управление<span>.</span></h2></div><button class="icon-btn close-modal" value="cancel" aria-label="Закрыть"><i data-lucide="x"></i></button></div><div class="shortcut"><span>Перемещение / вращение / масштаб</span><kbd>G</kbd><kbd>R</kbd><kbd>S</kbd></div><div class="shortcut"><span>Центрировать выбранный объект</span><kbd>F</kbd></div><div class="shortcut"><span>Удалить выбранный объект</span><kbd>Delete</kbd></div><div class="shortcut"><span>Отменить / повторить изменение</span><kbd>Ctrl Z</kbd><kbd>Ctrl Y</kbd></div><div class="shortcut"><span>Orbit / Pan / Zoom</span><kbd>ЛКМ</kbd><kbd>ПКМ</kbd><kbd>Wheel</kbd></div><p class="help-text">Горячие клавиши работают, когда фокус не находится в поле ввода. Для сохранения используйте кнопку «Сохранить» или экспорт ZIP.</p></form></dialog>
+<div id="toast-stack" class="toast-stack" role="status" aria-live="polite"></div>
+</body>
+</html>
