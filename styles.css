@@ -41,3 +41,13 @@
 .library-remove{color:#e29ca7}
 .library-note{margin:16px 0 0;padding-top:12px;border-top:1px solid #354058}
 @media(max-width:580px){.library-entry{flex-wrap:wrap}.library-entry-info{flex-basis:100%}}
+
+/* Large batch import queue; abort is cooperative between individual files. */
+.import-status{display:flex;align-items:center;gap:13px;margin:0 26px 12px;padding:9px 12px;background:#1c2a3d;border:1px solid #3c587d;border-radius:9px;font-size:11px;color:#cbdafa}
+.import-status>div{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.import-status>div span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.import-status>div svg{width:15px;height:15px;color:var(--accent);animation:import-spin 1.8s linear infinite}
+.import-status progress{width:min(25%,160px);height:7px;accent-color:#a1baff}
+.import-status .btn{font-size:10px;padding:5px 8px}
+@keyframes import-spin{to{transform:rotate(360deg)}}
+@media(max-width:580px){.import-status{margin:0 8px 8px;flex-wrap:wrap}.import-status>div{flex-basis:100%}.import-status progress{width:65%;flex:1}}

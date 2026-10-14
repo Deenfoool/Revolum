@@ -12,7 +12,8 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [x] IndexedDB local project save/restore, ZIP backup and restore
 - [x] Basic keyboard commands and limited undo/redo
 - [ ] Browser smoke tests across Chrome/Firefox/Safari and real sample files
-- [ ] Full asset lifecycle / import progress and cancellation for large scans
+- [x] Batch import progress and cooperative cancellation between files; previously imported assets stay in project
+- [ ] Mid-file abort for parser/decoder work and bounded import memory budgets
 
 ## M2 — Scan preparation
 - [x] Camera capture and video-to-frames (browser-only, video up to 5 minutes and 48 sampled frames)

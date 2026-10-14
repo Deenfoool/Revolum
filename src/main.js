@@ -5,7 +5,7 @@ import { saveLocal,loadLocal,exportProjectZip,importProjectZip,download,safeFile
 const $=id=>document.getElementById(id);
 const icons=()=>window.lucide?.createIcons();
 const uid=()=>crypto.randomUUID?.()||'p'+Date.now()+Math.random().toString(36).slice(2);
-const state={name:'Untitled scan',photos:[],selectedPhotoId:null,mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve()};
+const state={name:'Untitled scan',photos:[],selectedPhotoId:null,mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve(),importController:null};
 let engine;
 let videoController=null,cameraStream=null;
 function toast(message,type='info'){const item=document.createElement('div');item.className='toast '+type;item.textContent=message;$('toast-stack').appendChild(item);setTimeout(()=>item.remove(),5300)}
@@ -25,7 +25,20 @@ async function restoreSnapshot(snapshot,notify=false){
 }
 async function undo(){if(!state.history.length||state.busy)return;const prev=state.history.pop();state.redo.push(capture());await restoreSnapshot(prev)}
 async function redo(){if(!state.redo.length||state.busy)return;const next=state.redo.pop();state.history.push(capture());await restoreSnapshot(next)}
-function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn'])$(id).disabled=b;}
+function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn','new-btn','restore-btn','open-zip-btn','add-shape','delete-object'])$(id).disabled=b;}
+function beginImport(label,total){
+  state.importController=new AbortController();setBusy(true);
+  $('import-status').classList.remove('hidden');$('import-progress').max=Math.max(1,total);$('import-progress').value=0;
+  $('import-status-text').textContent=label+' · 0 / '+total;
+  $('import-cancel-btn').disabled=false;return state.importController.signal;
+}
+function updateImport(label,index,total,name){
+  $('import-progress').value=index;
+  $('import-status-text').textContent=label+' · '+index+' / '+total+(name?' · '+name:'');
+}
+function finishImport(){
+  state.importController=null;$('import-status').classList.add('hidden');setBusy(false);
+}
 function renderAll(){renderScene();renderPhotos();renderInspector();renderMode()}
 function renderScene(){
   const list=$('object-list');list.replaceChildren();
@@ -108,18 +121,43 @@ async function addModels(files){
   if(!models.length){toast('Выберите GLB, glTF, OBJ, STL или PLY','error');return}
   const supported=/\.(mtl|bin|jpg|jpeg|png|webp|gif|ktx2)$/i;
   const resources=all.filter(f=>supported.test(f.name));
-  setMode('object');setBusy(true);let successes=0;
-  try{for(const file of models){const before=capture();try{await engine.importFile(file,{resourceFiles:resources});commitHistory(before);successes++}catch(error){toast(file.name+': '+error.message,'error')}}}
-  finally{setBusy(false);renderScene();renderInspector();if(successes){queueSave();toast('Добавлено 3D-моделей: '+successes,'success')}}
+  setMode('object');const label='Импорт 3D',signal=beginImport(label,models.length);let successes=0,handled=0;
+  try{
+    for(const file of models){
+      if(signal.aborted)break;
+      updateImport(label,handled,models.length,file.name);
+      const before=capture();
+      try{await engine.importFile(file,{resourceFiles:resources});commitHistory(before);successes++}
+      catch(error){toast(file.name+': '+error.message,'error')}
+      handled++;updateImport(label,handled,models.length,file.name);
+    }
+  }finally{
+    finishImport();renderScene();renderInspector();
+    if(successes){queueSave();toast('Добавлено 3D-моделей: '+successes,'success')}
+    if(signal.aborted)toast('Очередь импорта остановлена. Уже добавленные модели сохранены.');
+  }
 }
 async function addPhotos(files){
   const images=[...files].filter(isPhoto);if(!images.length){toast('Добавьте файлы изображений','error');return}
-  setMode('photos');setBusy(true);const before=capture();let added=0;try{
-    for(const file of images){if(state.photos.length>=500){toast('Лимит: 500 изображений','error');break}try{
-      const report=await inspectPhoto(file);const photo={id:uid(),file,url:URL.createObjectURL(file),...report};state.photos.push(photo);if(!state.selectedPhotoId)state.selectedPhotoId=photo.id;added++;
-    }catch(error){toast(error.message,'error')}}
+  if(state.busy)return;
+  setMode('photos');const before=capture(),label='Подготовка фото',signal=beginImport(label,images.length);let added=0,handled=0;
+  try{
+    for(const file of images){
+      if(signal.aborted)break;
+      if(state.photos.length>=500){toast('Лимит: 500 изображений','error');break}
+      updateImport(label,handled,images.length,file.name);
+      try{
+        const report=await inspectPhoto(file);
+        if(signal.aborted)break;
+        const photo={id:uid(),file,url:URL.createObjectURL(file),...report};state.photos.push(photo);
+        if(!state.selectedPhotoId)state.selectedPhotoId=photo.id;added++;
+      }catch(error){toast(error.message,'error')}
+      handled++;updateImport(label,handled,images.length,file.name);
+    }
     if(added){commitHistory(before);renderPhotos();queueSave();toast('Добавлено фотографий: '+added,'success')}
-  }finally{setBusy(false)}
+  }finally{
+    finishImport();if(signal.aborted)toast('Импорт остановлен. Уже добавленные фотографии сохранены.');
+  }
 }
 async function importVideo(file) {
   if(!file||state.busy)return;
@@ -206,6 +244,7 @@ function confirmReset(){if(!confirm('Очистить текущую сцену 
 function removeObject(){if(!engine.selectedId)return;commitHistory();engine.remove(engine.selectedId);renderInspector();queueSave()}
 function demo(){state.loading=true;const knot=engine.addPrimitive('knot',{name:'Demo / Sculpted form',silent:true});engine.applyTransform(knot.id,{position:[0,.18,0],rotation:[.3,.2,0],scale:[1,1,1]},false);const base=engine.addPrimitive('cylinder',{name:'Demo / Pedestal',silent:true});engine.applyTransform(base.id,{position:[0,-1.06,0],rotation:[0,0,0],scale:[1.55,.13,1.55]},false);engine.select(knot.id);engine.frame();state.loading=false;renderAll()}
 function keyboard(event){
+  if(state.busy)return;
   const focus=document.activeElement;
   if(focus?.matches('input,textarea,[contenteditable]')||document.querySelector('dialog[open]'))return;
   if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();event.shiftKey?redo():undo();return}
@@ -228,6 +267,7 @@ function bind(){
   $('library-btn').onclick=()=>{$('library-dialog').showModal();renderLibrary()};
   $('library-close-btn').onclick=()=>$('library-dialog').close();
   $('library-save-btn').onclick=saveLibraryCopy;
+  $('import-cancel-btn').onclick=()=>{state.importController?.abort();$('import-cancel-btn').disabled=true;$('import-status-text').textContent='Остановка после текущего файла…'};
   $('video-import-btn').onclick=()=>$('video-file').click();
   $('video-file').onchange=e=>importVideo(e.target.files[0]);
   $('capture-cancel-btn').onclick=()=>videoController?.abort();

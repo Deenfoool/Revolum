@@ -2,7 +2,7 @@
 
 **Capture. Reconstruct. Create.** A browser-based studio for organizing photo scans, inspecting and editing 3D assets, and exporting scenes.
 
-Revolum is a static-first project designed for GitHub Pages. The first milestone offers a real Three.js workspace, a photo-set quality checker and local JPEG EXIF inspector (including GPS presence warnings), with camera capture and local video-to-frame extraction, mesh import/edit/export and local project persistence. **It does not claim to reconstruct a mesh from photographs in the browser yet**; photogrammetry and Gaussian Splatting are tracked as future optional compute-engine integrations.
+Revolum is a static-first project designed for GitHub Pages. The first milestone offers a real Three.js workspace, a photo-set quality checker and local JPEG EXIF inspector (including GPS presence warnings), with camera capture and local video-to-frame extraction, mesh import/edit/export, batch import progress and cancellation between files, and local project persistence. **It does not claim to reconstruct a mesh from photographs in the browser yet**; photogrammetry and Gaussian Splatting are tracked as future optional compute-engine integrations.
 
 See [ROADMAP.md](ROADMAP.md) for implemented and planned features.
 
@@ -20,7 +20,7 @@ Run a static server in this repository (ES modules need HTTP): `python3 -m http.
 
 ## Formats
 
-Imports: GLB, glTF (+ matching BIN/textures), OBJ (+ matching MTL/textures), STL, PLY (mesh or point cloud). Select related files together, or use Import model folder. Linked files are matched by filename; filenames must be unique within a model import. Exports: GLB (materials where supported), OBJ (geometry only), STL (geometry only, no printability guarantee), and a ZIP project with source photos/assets and manifest. Local autosave and up to 12 named project snapshots use IndexedDB (browser/device local only). ZIP remains the portable backup.
+Imports: GLB, glTF (+ matching BIN/textures), OBJ (+ matching MTL/textures), STL, PLY (mesh or point cloud). Select related files together, or use Import model folder. Linked files are matched by filename; filenames must be unique within a model import. Exports: GLB (materials where supported), OBJ (geometry only), STL (geometry only, no printability guarantee), and a ZIP project with source photos/assets and manifest. Local autosave and up to 12 named project snapshots use IndexedDB (browser/device local only). ZIP remains the portable backup. Batch import cancellation is cooperative: it stops before the next file, but does not interrupt parsing the current file.
 
 ## Privacy
 
