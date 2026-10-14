@@ -240,9 +240,22 @@ export class Studio3D {
     const safe=(item.name||'edited-mesh').replace(/[^a-z0-9а-яё_-]+/gi,'-').slice(0,60)||'mesh';
     const sourceFile=new File([binary],safe+'-edited.glb',{type:'model/gltf-binary'});
     const old=mesh.geometry;mesh.geometry=next;item.sourceFile=sourceFile;
-    item.method='mesh-processed';item.meshReport={...result.operation,quality:result.quality};
+    item.method='mesh-processed';item.meshReport={...result.operation,quality:result.quality};item.meshAudit=null;
     old.dispose();this.notify();
     return item.meshReport;
+  }
+  async auditEditableMesh(id){
+    const item=this.items.get(id),mesh=this.getEditableMesh(id);
+    if(!mesh)throw Error('Выберите одиночный Dense Mesh с цветами вершин');
+    const geom=mesh.geometry,pos=geom.getAttribute('position'),rgb=geom.getAttribute('color');
+    const positions=new Float32Array(pos.count*3),colors=new Float32Array(pos.count*3);
+    for(let i=0;i<pos.count;i++){
+      positions[i*3]=pos.getX(i);positions[i*3+1]=pos.getY(i);positions[i*3+2]=pos.getZ(i);
+      colors[i*3]=rgb.getX(i);colors[i*3+1]=rgb.getY(i);colors[i*3+2]=rgb.getZ(i);
+    }
+    const audit=await runMeshOperation({positions,colors,indices:Uint32Array.from(geom.index.array)},'audit',0);
+    if(this.items.get(id)!==item)throw Error('Объект изменился до завершения аудита');
+    item.meshAudit=audit;this.notify();return audit;
   }
   getPointCloud(id){
     const item=this.items.get(id),root=item?.root;
@@ -271,7 +284,7 @@ export class Studio3D {
   view(type){const center=this.orbit.target.clone(),distance=Math.max(this.camera.position.distanceTo(center),4);const v={front:[0,0,1],right:[1,0,0],top:[0,1,.00001],perspective:[1,.7,1]}[type];if(!v)return;const direction=new THREE.Vector3(...v).normalize();this.camera.position.copy(center).addScaledVector(direction,distance);this.camera.up.set(0,1,0);this.camera.lookAt(center);this.orbit.update()}
   setTool(mode){this.transform.setMode(mode)}
   image(){return this.renderer.domElement.toDataURL('image/png')}
-  snapshot(){return [...this.items.values()].map(item=>({id:item.id,name:item.name,kind:item.kind,primitive:item.primitive||null,sourceFile:item.sourceFile||null,resourceFiles:item.resourceFiles||[],method:item.method||null,meshReport:item.meshReport||null,transform:this.getTransform(item.id)}))}
+  snapshot(){return [...this.items.values()].map(item=>({id:item.id,name:item.name,kind:item.kind,primitive:item.primitive||null,sourceFile:item.sourceFile||null,resourceFiles:item.resourceFiles||[],method:item.method||null,meshReport:item.meshReport||null,meshAudit:item.meshAudit||null,transform:this.getTransform(item.id)}))}
   async restore(items=[]){this.clear();for(const item of items){try{if(item.kind==='model'&&item.sourceFile)await this.importFile(item.sourceFile,{...item,silent:true});else if(item.kind==='primitive')this.addPrimitive(item.primitive,{...item,silent:true});}catch(error){this.hooks.onError?.('Не удалось восстановить '+item.name+': '+error.message)}}this.select(null);this.frame()}
   async exportScene(format) {
     if(!this.items.size)throw Error('В сцене пока нет объектов');

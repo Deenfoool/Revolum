@@ -1,7 +1,7 @@
 // Keep large geometry operations off the main UI thread; original mesh is not
 // modified until a valid GLB snapshot has successfully been generated.
 export function runMeshOperation(mesh,method,cellRatio){
- if(!['simplify','orient'].includes(method))return Promise.reject(Error('Неизвестная операция'));
+ if(!['simplify','orient','qem','audit'].includes(method))return Promise.reject(Error('Неизвестная операция'));
  const id=crypto.randomUUID?.()||String(Date.now());
  return new Promise((resolve,reject)=>{
    let worker;

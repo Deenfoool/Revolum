@@ -28,7 +28,7 @@ async function restoreSnapshot(snapshot,notify=false){
 }
 async function undo(){if(!state.history.length||state.busy||!canDiscardSplat())return;const prev=state.history.pop();state.redo.push(capture());await restoreSnapshot(prev)}
 async function redo(){if(!state.redo.length||state.busy||!canDiscardSplat())return;const next=state.redo.pop();state.history.push(capture());await restoreSnapshot(next)}
-function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn','new-btn','restore-btn','open-zip-btn','add-shape','delete-object','depth-quality','depth-strength','cloud-reduce','cloud-voxel','mesh-simplify','mesh-orient','mesh-cell'])$(id).disabled=b;$('reconstruct-selected').disabled=b||!state.selectedPhotoId;$('mv-start').disabled=b||state.photos.length<8||!!multiview?.ready||mvPending;$('mv-preset').disabled=b||!!multiview?.ready||mvPending;}
+function setBusy(b){state.busy=b;for(const id of ['export-btn','save-btn','import-model-btn','import-model-folder-btn','import-photos-btn','video-import-btn','camera-open-btn','photo-import-hero','photo-add-inline','library-btn','library-save-btn','new-btn','restore-btn','open-zip-btn','add-shape','delete-object','depth-quality','depth-strength','cloud-reduce','cloud-voxel','mesh-simplify','mesh-orient','mesh-cell','mesh-qem','mesh-qem-ratio','mesh-audit','mesh-audit-download'])$(id).disabled=b;$('reconstruct-selected').disabled=b||!state.selectedPhotoId;$('mv-start').disabled=b||state.photos.length<8||!!multiview?.ready||mvPending;$('mv-preset').disabled=b||!!multiview?.ready||mvPending;}
 function beginImport(label,total){
   state.importController=new AbortController();setBusy(true);
   $('import-status').classList.remove('hidden');$('import-progress').max=Math.max(1,total);$('import-progress').value=0;
@@ -56,12 +56,31 @@ function renderScene(){
   $('viewport-stats').textContent=engine.items.size+' OBJECT'+(engine.items.size===1?'':'S');
   icons();
 }
+function renderMeshAudit(item){
+ const root=$('mesh-audit-result');root.replaceChildren();
+ const r=item?.meshAudit;
+ $('mesh-audit-download').classList.toggle('hidden',!r);
+ root.classList.toggle('hidden',!r);
+ if(!r)return;
+ const headline=document.createElement('strong');
+ headline.textContent=r.intersection.status==='found'?'Найдены потенциальные пересечения':r.intersection.status==='clear'?'Несмежные треугольники: пересечений в пределах проверки не найдено':'Аудит ограничен / не завершён';
+ root.append(headline);
+ const p=document.createElement('p');
+ p.textContent='Проверено пар: '+r.intersection.testedPairs.toLocaleString('ru-RU')+
+ ' · найдено: '+r.intersection.countAtLeast+' · граничных рёбер: '+r.quality.boundaryEdges+
+ ' · неманифолдных: '+r.quality.nonManifoldEdges+
+ ' · габариты (локальные единицы): '+r.boundingBox.size.map(v=>v.toFixed(3)).join(' × ')+
+ (r.signedVolume===null?' · объём недоступен':' · объём ≈ '+r.signedVolume.toFixed(4)+' условных³');
+ root.append(p);
+ const caution=document.createElement('p');caution.textContent='Печатная пригодность НЕ подтверждена: толщина стенок и физическая шкала не измерены; касания и смежные грани требуют отдельного CAD-аудита.';root.append(caution);
+}
 function renderInspector(){
   const item=engine.items.get(engine.selectedId);$('inspector-empty').classList.toggle('hidden',!!item);$('inspector-fields').classList.toggle('hidden',!item);
   if(!item)return;
   if(document.activeElement!==$('selected-name'))$('selected-name').value=item.name;
   const isCloud=!!engine.getPointCloud(item.id),isEditableMesh=!!engine.getEditableMesh(item.id);
   $('mesh-tools').classList.toggle('hidden',!isEditableMesh);
+  renderMeshAudit(isEditableMesh?item:null);
   if(isEditableMesh){const r=item.meshReport;$('mesh-tool-status').textContent=r?('Последняя операция: '+(r.method==='consistent-winding'?'ориентация граней':'упрощение')+' · '+r.triangles.toLocaleString('ru-RU')+' треугольников · граничных рёбер '+r.quality.boundaryEdges+'. Модель не сертифицирована для 3D-печати.'):'Исходный Dense Mesh. Результат обработки сохраняется в GLB и поддерживает Undo.';}
   $('selected-kind').textContent=isCloud?'POINT CLOUD / PLY':item.kind==='model'?'IMPORTED MODEL':'PROCEDURAL SHAPE';
   $('cloud-tools').classList.toggle('hidden',!isCloud);
@@ -489,16 +508,27 @@ async function processSelectedMesh(method){
   const id=engine.selectedId;
   if(state.busy||!engine.getEditableMesh(id))return;
   const before=capture();setBusy(true);
-  $('mesh-tool-status').textContent=method==='simplify'?'Упрощение сетки в Worker…':'Согласование ориентации граней в Worker…';
+  $('mesh-tool-status').textContent=method==='simplify'?'Упрощение сетки в Worker…':method==='qem'?'QEM: проверка и схлопывание внутренних рёбер…':'Согласование ориентации граней в Worker…';
   try{
-    const report=await engine.processMesh(id,method,Number($('mesh-cell').value));
+    const value=method==='qem'?Number($('mesh-qem-ratio').value):Number($('mesh-cell').value);
+    const report=await engine.processMesh(id,method,value);
     commitHistory(before);renderInspector();queueSave();
     const result=report.sourceTriangles+' → '+report.triangles+' треугольников';
-    toast((method==='simplify'?'Mesh упрощён: ':'Ориентация граней обработана: ')+result,'success');
+    toast((method==='orient'?'Ориентация обработана: ':method==='qem'?'QEM: ':'Mesh упрощён: ')+result+(report.limitReached?' (достигнут безопасный предел)':''),'success');
   }catch(error){
     $('mesh-tool-status').textContent='Операция не выполнена: '+error.message;
     toast('Mesh: '+error.message,'error');
   }finally{setBusy(false)}
+}
+async function auditSelectedMesh(){
+ const id=engine.selectedId;if(state.busy||!engine.getEditableMesh(id))return;
+ setBusy(true);$('mesh-tool-status').textContent='Анализ топологии и самопересечений в Worker…';
+ try{
+  const report=await engine.auditEditableMesh(id);
+  renderInspector();queueSave();
+  toast('Диагностика выполнена: '+report.intersection.status+' · '+report.intersection.testedPairs.toLocaleString('ru-RU')+' пар','success');
+ }catch(error){$('mesh-tool-status').textContent='Аудит: '+error.message;toast('Аудит Mesh: '+error.message,'error')}
+ finally{setBusy(false)}
 }
 async function reduceCloud(){
   const id=engine.selectedId;if(state.busy||!engine.getPointCloud(id))return;
@@ -576,6 +606,9 @@ function bind(){
   $('cloud-reduce').onclick=reduceCloud;
   $('mesh-simplify').onclick=()=>processSelectedMesh('simplify');
   $('mesh-orient').onclick=()=>processSelectedMesh('orient');
+  $('mesh-qem').onclick=()=>processSelectedMesh('qem');
+  $('mesh-audit').onclick=auditSelectedMesh;
+  $('mesh-audit-download').onclick=()=>{const r=engine.items.get(engine.selectedId)?.meshAudit;if(r)download(new Blob([JSON.stringify(r,null,2)],{type:'application/json'}),safeFilename(state.name)+'-mesh-audit.json')};
   $('frame-btn').onclick=()=>engine.frame(engine.selectedId);
   $('shot-btn').onclick=()=>{try{const data=engine.image();const a=document.createElement('a');a.href=data;a.download=safeFilename(state.name)+'-viewport.png';a.click()}catch(error){toast(error.message,'error')}};
   for(const btn of document.querySelectorAll('[data-view]'))btn.onclick=()=>{engine.view(btn.dataset.view);document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b===btn))};

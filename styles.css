@@ -141,3 +141,9 @@
 #mesh-tools .quality-note{font-size:10px;line-height:1.65;color:#9eafc9}
 #mesh-tools .btn{margin-top:7px;justify-content:center;gap:8px}
 .mesh-tool-status{border-top:1px solid #334861;margin-top:13px;padding-top:11px;color:#9cb7d7;font-size:10px;line-height:1.6;overflow-wrap:anywhere}
+
+/* M4 QEM and bounded printability evidence. No printable-success badge. */
+#mesh-tools #mesh-qem,#mesh-tools #mesh-audit{margin-top:8px}
+.mesh-audit-result{margin-top:12px;padding:11px;border:1px solid #48617b;border-radius:7px;background:#1b2a3c;color:#bbcee4;font-size:10px;line-height:1.7;overflow-wrap:anywhere}
+.mesh-audit-result strong{display:block;color:#e1ebf8;margin-bottom:6px}
+.mesh-audit-result p{margin:6px 0 0}

@@ -48,7 +48,7 @@
         <button id="import-model-btn" class="btn btn-outline btn-full"><i data-lucide="package-plus"></i> Импорт модели</button>
         <button id="import-model-folder-btn" class="btn btn-outline btn-full"><i data-lucide="folder-input"></i> Импорт папки модели</button>\n        <button id="import-photos-btn" class="btn btn-outline btn-full hidden"><i data-lucide="images"></i> Добавить фотографии</button>
         <div class="storage-note"><i data-lucide="hard-drive"></i><span>Файлы остаются на устройстве. Экспортируйте ZIP для резервной копии.</span></div>
-        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.4.2</span></div>
+        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.4.3</span></div>
       </div>
     </aside>
     <main class="main-area">
@@ -152,6 +152,12 @@
             </select>
             <button id="mesh-simplify" class="btn btn-outline btn-full"><i data-lucide="shrink"></i> Упростить Mesh</button>
             <button id="mesh-orient" class="btn btn-outline btn-full"><i data-lucide="arrow-up-down"></i> Согласовать нормали</button>
+            <label class="field-label" for="mesh-qem-ratio">QEM · оставить треугольников</label>
+            <select id="mesh-qem-ratio" class="cloud-voxel-select"><option value="0.85">85% · осторожно</option><option value="0.7" selected>70% · обычно</option><option value="0.5">50% · сильнее</option></select>
+            <button id="mesh-qem" class="btn btn-outline btn-full"><i data-lucide="git-merge"></i> Упростить QEM (границы защищены)</button>
+            <button id="mesh-audit" class="btn btn-outline btn-full"><i data-lucide="scan-search"></i> Проверить пересечения / топологию</button>
+            <div id="mesh-audit-result" class="mesh-audit-result hidden" role="status" aria-live="polite"></div>
+            <button id="mesh-audit-download" class="btn btn-outline btn-full hidden"><i data-lucide="download"></i> Скачать отчёт (.json)</button>
             <div id="mesh-tool-status" class="mesh-tool-status" role="status" aria-live="polite">Результат сохраняется в GLB; доступен Undo и ZIP проекта.</div>
           </div>
           <div class="inspector-block hidden" id="cloud-tools"><div class="block-header"><span>POINT CLOUD / CLEANUP</span></div><p class="quality-note">Voxel-прореживание оставляет одну реальную точку на пространственную ячейку. Размер ячейки считается от диагонали облака. Новая версия сохраняется в исходном формате PLY и поддерживает Undo.</p><label class="field-label" for="cloud-voxel">Размер вокселя</label><select id="cloud-voxel" class="cloud-voxel-select"><option value="0.005">0,5% · лёгкое</option><option value="0.01">1% · умеренное</option><option value="0.025" selected>2,5% · заметное</option><option value="0.05">5% · сильное</option></select><button id="cloud-reduce" class="btn btn-outline btn-full"><i data-lucide="scan-line"></i> Проредить облако</button></div>
