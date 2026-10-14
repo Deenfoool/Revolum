@@ -13,7 +13,9 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [x] Basic keyboard commands and limited undo/redo
 - [ ] Browser smoke tests across Chrome/Firefox/Safari and real sample files
 - [x] Batch import progress and cooperative cancellation between files; previously imported assets stay in project
-- [ ] Mid-file abort for parser/decoder work and bounded import memory budgets
+- [ ] Mid-file abort for parser/decoder work
+- [x] Conservative preflight memory budgeting for SfM/3DGS frames against actual WebGPU binding limit, incl. 360° pano expansion
+- [ ] Full GPU allocation estimator and peak decoder memory audit on real devices
 
 ## M2 — Scan preparation
 - [x] Camera capture and video-to-frames (browser-only, video up to 5 minutes and 48 sampled frames)
@@ -33,6 +35,7 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [x] Reconstruct/cancel UI, model download status and depth-map preview
 - [x] Multi-view automatic camera registration and triangulation (SfM with bundled Splat.js)
 - [x] True WebGPU differentiable 3DGS optimization and PLY export (anisotropic Gaussian primitives, not fake point sprites)
+- [x] Per-scan Economy/Balanced/Detail memory profiles; resolution cap and conservative GPU-target/CPU-frame estimates; lowMem cleanup
 - [x] Live splat preview, solved camera selector, orbit, pause/resume/finish, stage/metric reporting
 - [x] Sparse colored SfM point-cloud PLY and camera JSON exports, point-cloud import to Object Studio
 - [x] Per-scan SfM registration diagnostics (missing image names, coverage, sparse-point count, optional BA error)

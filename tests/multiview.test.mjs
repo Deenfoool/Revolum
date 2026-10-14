@@ -51,3 +51,15 @@ test('SfM diagnostics and export/backup controls are wired',()=>{
  assert.match(adapter,/this\.report=sfmDiagnostics\(/);
  assert.ok(existsSync(resolve(root,'src/scan-package.js')));
 });
+
+test('WebGPU preflight passes bounded resolution and low-memory options to Splat.js',()=>{
+ const adapter=read('src/multiview.js'),main=read('src/main.js'),html=read('index.html');
+ assert.match(adapter,/planScanBudget\(meta,/);
+ assert.match(adapter,/maxStorageBufferBindingSize/);
+ assert.match(adapter,/lowMem:true/);
+ assert.match(adapter,/frames:\{trainMaxDim:this\.budget\.trainMaxDim,featMaxDim:this\.budget\.featMaxDim\}/);
+ assert.match(main,/budgetProfile:\$\('mv-memory-profile'\)\.value/);
+ assert.match(html,/id="mv-budget"/);
+ assert.match(html,/id="mv-memory-profile"/);
+ assert.match(main,/if\(kind==='ply'&&multiview\.phase==='training'\)multiview\.pause\(\)/);
+});

@@ -77,7 +77,7 @@
           <div class="multiview-panel" id="multiview-panel">
             <div class="reconstruction-heading"><div><span class="overline">FULL PHOTOGRAMMETRY / WEBGPU · SPATIAL CAPTURE</span><h3>Многокадровый 3D Gaussian Splatting<span class="multiview-new">NEW</span></h3><p>От 8 до 120 перекрывающихся фотографий. Настоящий SfM: поиск признаков → сопоставление → расчёт положений камер → триангуляция → обучение анизотропных Gaussian Splats в браузере. Без загрузки ваших фотографий на сервер.</p></div><span class="reconstruction-badge">SPLAT.JS · MIT</span></div>
             <div class="multiview-controls">
-              <label>Профиль обучения<select id="mv-preset"><option value="4000">Draft · 4 000 итераций</option><option value="12000" selected>Balanced · 12 000</option><option value="30000">Quality · 30 000</option></select></label>
+              <label>Профиль обучения<select id="mv-preset"><option value="4000">Draft · 4 000 итераций</option><option value="12000" selected>Balanced · 12 000</option><option value="30000">Quality · 30 000</option></select></label><label>Память / разрешение<select id="mv-memory-profile"><option value="economy">Экономный</option><option value="balanced" selected>Сбалансированный</option><option value="detail">Детальный</option></select></label>
               <span class="mv-count" id="mv-input-count">Выбрано 0 фото · требуется 8+</span>
               <button class="btn btn-primary" id="mv-start" disabled><i data-lucide="scan-face"></i> Собрать 3D-пространство</button>
               <button class="btn btn-quiet hidden" id="mv-new"><i data-lucide="refresh-cw"></i> Новый многокадровый скан</button>
@@ -87,6 +87,7 @@
               <button class="btn btn-outline hidden" id="mv-finish"><i data-lucide="check"></i> Завершить</button>
             </div>
             <div class="mv-status" aria-live="polite"><div id="mv-status">Нужен WebGPU и перекрывающиеся фотографии одной неподвижной сцены.</div><progress id="mv-progress" max="100" value="0" class="hidden" aria-label="Прогресс многокадровой реконструкции"></progress></div>
+            <div id="mv-budget" class="mv-budget hidden" role="status"></div>
             <div id="mv-diagnostics" class="mv-diagnostics hidden" aria-live="polite"></div>
             <div id="mv-viewer" class="mv-viewer hidden">
               <div class="mv-view-header"><span><i data-lucide="orbit"></i> LIVE 3DGS PREVIEW</span><label>Ракурс камеры <select id="mv-camera" aria-label="Ракурс рассчитанной камеры"></select></label></div>

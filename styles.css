@@ -104,3 +104,8 @@
 .mv-exports .btn-primary{background:#9bdfc1;color:#112b24;border-color:#b4f2d8}
 .mv-exports .btn-primary:hover{background:#c0f4dd;color:#0e211b}
 .mv-exports button:disabled{opacity:.45}
+
+/* Per-device reconstruction memory planning. Approximate target-buffer estimate,
+   never displayed as total VRAM or a guarantee of completing training. */
+.mv-budget{margin:11px 0;padding:10px 13px;background:#182b36;border:1px solid #436778;border-radius:7px;color:#bfdced;font-size:10px;line-height:1.65;font-variant-numeric:tabular-nums}
+.mv-budget:not(.hidden){display:block}

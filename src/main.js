@@ -206,12 +206,14 @@ function multiviewButtons(){
   $('mv-backup-warning').classList.toggle('hidden',!ready||mvExported);
   $('mv-start').disabled=state.busy||mvPending||ready||state.photos.length<8||state.photos.length>120;
   $('mv-preset').disabled=state.busy||mvPending||ready;
+  $('mv-memory-profile').disabled=state.busy||mvPending||ready;
   icons();
 }
 function resetMultiviewUi(){
   $('mv-viewer').classList.add('hidden');$('mv-camera').replaceChildren();
   $('mv-progress').classList.add('hidden');$('mv-progress').value=0;
   $('mv-diagnostics').replaceChildren();$('mv-diagnostics').classList.add('hidden');
+  $('mv-budget').textContent='';$('mv-budget').classList.add('hidden');
   mvExported=false;mvPackaging=false;
   $('mv-stats').textContent='SfM';$('mv-status').textContent='Нужен WebGPU и 8–120 перекрывающихся фотографий одной неподвижной сцены.';
   multiviewButtons();
@@ -231,6 +233,7 @@ async function startMultiview(){
       canvas:$('mv-canvas'),
       onUpdate:e=>{
         $('mv-status').textContent=e.message;
+        if(e.budget){$('mv-budget').classList.remove('hidden');$('mv-budget').textContent='Ресурсы: '+e.budget.profileLabel+' · '+e.budget.trainMaxDim+' px · '+e.budget.frames+' рабочих кадров · GPU targets ≈'+e.budget.packedMB+' МБ (лимит '+e.budget.bindingLimitMB+' МБ) · CPU frames ≈'+e.budget.cpuEstimateMB+' МБ. '+(e.budget.warning||'Общий расход GPU/CPU памяти будет выше этих оценок.');}
         if(e.stage&&e.total>0)$('mv-progress').value=Math.round(e.done/e.total*100);
         if(e.phase==='training'||e.phase==='paused'||e.phase==='complete')multiviewButtons();
         if(e.metrics){
@@ -250,7 +253,7 @@ async function startMultiview(){
       onError:(e,report)=>{renderMultiviewReport(report);$('mv-status').textContent='Ошибка многокадровой реконструкции: '+(e?.message||e);if(mvJobSettled){toast('Многокадровая реконструкция: '+(e?.message||e),'error');multiviewButtons()}}
     });
     const preset=Number($('mv-preset').value);
-    await multiview.run(photos,{maxIters:preset,initTarget:preset<=4000?6000:preset<=12000?20000:40000});
+    await multiview.run(photos,{maxIters:preset,budgetProfile:$('mv-memory-profile').value,photoMeta:state.photos.map(p=>({width:p.width,height:p.height}))});
     mvJobSettled=true;
   }catch(error){
     $('mv-status').textContent='Ошибка: '+error.message;
@@ -269,7 +272,7 @@ async function downloadMultiview(kind){
   if(!map[kind])return;
   const name=safeFilename(state.name),suffix={ply:'-gaussian-splats.ply',cloud:'-sparse-cloud.ply',cameras:'-cameras.json'}[kind];
   const button=$('mv-export-'+kind);button.disabled=true;
-  try{const blob=await map[kind]();download(blob,name+suffix);if(kind==='ply')mvExported=true;multiviewButtons();toast('Файл '+suffix+' подготовлен к скачиванию','success')}
+  try{if(kind==='ply'&&multiview.phase==='training')multiview.pause();const blob=await map[kind]();download(blob,name+suffix);if(kind==='ply')mvExported=true;multiviewButtons();toast('Файл '+suffix+' подготовлен к скачиванию','success')}
   catch(error){toast('Экспорт: '+error.message,'error')}
   finally{button.disabled=!multiview?.ready}
 }
@@ -430,7 +433,7 @@ function bind(){
   $('mv-export-bundle').onclick=exportMultiviewBundle;
   $('mv-new').onclick=newMultiview;
   $('mv-pause').onclick=()=>{multiview?.pause();multiviewButtons()};
-  $('mv-resume').onclick=()=>{try{multiview?.resume();multiviewButtons()}catch(e){toast(e.message,'error')}};
+  $('mv-resume').onclick=()=>{try{multiview?.resume();mvExported=false;multiviewButtons()}catch(e){toast(e.message,'error')}};
   $('mv-finish').onclick=async()=>{try{await multiview?.finish();multiviewButtons()}catch(e){toast(e.message,'error')}};
   $('mv-camera').onchange=e=>{try{multiview?.selectCamera(e.target.value)}catch(error){toast(error.message,'error')}};
   const splatCanvas=$('mv-canvas');let splatPointer=null;
