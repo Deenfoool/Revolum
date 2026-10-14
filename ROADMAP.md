@@ -49,6 +49,8 @@ Static-first photogrammetry and 3D workspace. Status is based on code delivered,
 - [ ] Traditional PatchMatch MVS, depth confidence/masking and guaranteed watertight/printable geometry
 - [ ] Quantitative browser smoke test with a real ONNX inference and model/GLB roundtrip on published Pages
 - [x] Local session pipeline with progress, cancellation, GPU device loss and stage/metric events
+- [x] Single WebGPU device preflight reused by Splat.js SfM and training; retry alternate adapter, classify non-user AbortError by stage, neutral cancel, release device on reset
+- [ ] Reproduce original browser AbortError and verify fixed behavior on the affected machine; Firefox/Chrome WebGPU and real-photo end-to-end smoke tests
 - [ ] Optional local engine connector for GPU-grade multi-view workflows
 - [ ] COLMAP SfM/MVS mesh reconstruction
 - [x] Multi-view vertex-color sampling and skipped-camera calibration diagnostics

@@ -55,11 +55,24 @@ test('SfM diagnostics and export/backup controls are wired',()=>{
 test('WebGPU preflight passes bounded resolution and low-memory options to Splat.js',()=>{
  const adapter=read('src/multiview.js'),main=read('src/main.js'),html=read('index.html');
  assert.match(adapter,/planScanBudget\(meta,/);
- assert.match(adapter,/maxStorageBufferBindingSize/);
+ assert.match(adapter,/acquireScanDevice\(navigator\.gpu,/);
+ assert.match(adapter,/bindingLimit:gpu\.bindingLimit/);
+ assert.match(adapter,/device:this\.device/);
  assert.match(adapter,/lowMem:true/);
  assert.match(adapter,/frames:\{trainMaxDim:this\.budget\.trainMaxDim,featMaxDim:this\.budget\.featMaxDim\}/);
  assert.match(main,/budgetProfile:\$\('mv-memory-profile'\)\.value/);
  assert.match(html,/id="mv-budget"/);
  assert.match(html,/id="mv-memory-profile"/);
  assert.match(main,/if\(kind==='ply'&&multiview\.phase==='training'\)multiview\.pause\(\)/);
+});
+
+test('scan cancellation, device cleanup and stage-scoped browser abort diagnostic are wired',()=>{
+ const main=read('src/main.js'),adapter=read('src/multiview.js'),preflight=read('src/splat-preflight.js');
+ assert.match(main,/multiview\?\.cancel\(\)/);
+ assert.match(main,/const cancelled=mvCancelled/);
+ assert.match(adapter,/this\.device\?\.destroy\?\.\(\)/);
+ assert.match(adapter,/scanError\(error,\{phase:this\.phase,signal:this\.controller\?\.signal\}\)/);
+ assert.match(preflight,/requiredFeatures:\[\]/);
+ assert.match(preflight,/powerPreference of \['high-performance','low-power'\]/);
+ assert.match(read('vendor/splatjs/src/session.js'),/device: this\.opts\.device/);
 });

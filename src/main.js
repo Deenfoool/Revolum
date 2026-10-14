@@ -201,7 +201,7 @@ function renderMultiviewReport(report){
   }else{const note=document.createElement('p');note.textContent='Все кадры зарегистрированы. Масштаб реконструкции относительный.';panel.append(note)}
 }
 function cancelMultiview(){
-  mvCancelled=true;multiview?.controller?.abort();
+  mvCancelled=true;multiview?.cancel();
   $('mv-status').textContent='Отмена запрошена. Текущая операция завершится перед освобождением ресурсов.';
   $('mv-cancel').disabled=true;
 }
@@ -281,7 +281,7 @@ async function startMultiview(){
         $('mv-stats').textContent='SfM: '+e.registered+'/'+e.input+' камер · '+e.points.toLocaleString('ru-RU')+' общих 3D-точек';
         renderMultiviewReport(e.report);
         mvPending=false;setBusy(false);multiviewButtons();
-        toast('Рассчитаны камеры. Настоящее обучение 3DGS запущено.','success');
+        toast('Камеры рассчитаны, 3DGS-тренер запущен.','success');
       },
       onComplete:e=>{multiviewButtons();$('mv-progress').value=100;toast('Обучение Gaussian Splats завершено. Можно экспортировать PLY.','success')},
       onError:(e,report)=>{renderMultiviewReport(report);$('mv-status').textContent='Ошибка многокадровой реконструкции: '+(e?.message||e);if(mvJobSettled){toast('Многокадровая реконструкция: '+(e?.message||e),'error');multiviewButtons()}}
@@ -290,8 +290,9 @@ async function startMultiview(){
     await multiview.run(photos,{maxIters:preset,budgetProfile:$('mv-memory-profile').value,photoMeta:state.photos.map(p=>({width:p.width,height:p.height}))});
     mvJobSettled=true;
   }catch(error){
-    $('mv-status').textContent='Ошибка: '+error.message;
-    toast('SfM / Gaussian Splatting: '+error.message,'error');
+    const cancelled=mvCancelled||error?.message==='Расчёт отменён пользователем.'||error?.message==='Реконструкция отменена';
+    if(cancelled){$('mv-status').textContent='Расчёт отменён. Можно начать новый скан.';toast('Многокадровая реконструкция отменена.');}
+    else{$('mv-status').textContent=error?.message||String(error);toast('SfM / Gaussian Splatting: '+(error?.message||error),'error');console.error('[Revolum multiview]',error);}
   }finally{mvJobSettled=true;mvPending=false;mvCancelled=false;setBusy(false);multiviewButtons()}
 }
 async function newMultiview(){

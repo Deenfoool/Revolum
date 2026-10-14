@@ -4,6 +4,7 @@
 import {createSession,camPosition} from '../vendor/splatjs/src/index.js';
 import {sfmDiagnostics,scanBundle} from './scan-package.js';
 import {planScanBudget} from './scan-budget.js';
+import {acquireScanDevice,scanError} from './splat-preflight.js';
 
 export function validateCapture(files){
   if(!Array.isArray(files)||files.length<8)throw Error('Для многокадрового скана нужно минимум 8 перекрывающихся фотографий');
@@ -42,7 +43,7 @@ export class MultiViewReconstruction{
   constructor({canvas,onUpdate=()=>{},onReady=()=>{},onComplete=()=>{},onError=()=>{}}){
     this.canvas=canvas;this.hooks={onUpdate,onReady,onComplete,onError};
     this.session=null;this.controller=null;this.phase='idle';this.pending=false;
-    this.unsub=[];this.revision=0;this.orbitState=null;this.report=null;this.budget=null;
+    this.unsub=[];this.revision=0;this.orbitState=null;this.report=null;this.budget=null;this.device=null;this.cancelRequested=false;
   }
   emit(message,extra={}){this.hooks.onUpdate({message,phase:this.phase,...extra})}
   get ready(){return !!this.session?.trainer}
@@ -97,22 +98,44 @@ export class MultiViewReconstruction{
     const t=[-dot(right,state.position),-dot(down,state.position),-dot(forward,state.position)];
     this.session.view.setCamera({...state.meta,R,t});
   }
+  cancel(){this.cancelRequested=true;this.controller?.abort()}
   async run(files,{maxIters=12000,budgetProfile='balanced',photoMeta=[]}={}){
     if(this.pending||this.ready)throw Error('Сначала завершите или сбросьте предыдущую реконструкцию');
     if(!navigator.gpu)throw Error('Для обучаемого Gaussian Splatting требуется WebGPU. Включите аппаратное ускорение и откройте сайт в совместимом браузере.');
     validateCapture(files);
     await this.reset();
+    if(this.cancelRequested)throw Error('Реконструкция отменена');
     const revision=++this.revision;
     this.controller=new AbortController();const preflightSignal=this.controller.signal;
-    const checkPreflight=()=>{if(preflightSignal.aborted||revision!==this.revision)throw Error('Реконструкция отменена')};
+    const checkPreflight=()=>{if(preflightSignal.aborted||this.cancelRequested||revision!==this.revision)throw Error('Реконструкция отменена')};
     this.phase='preflight';this.emit('Проверка WebGPU и расчёт безопасного разрешения фотосета…');
-    const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});checkPreflight();
-    if(!adapter)throw Error('Совместимый WebGPU-адаптер не найден');
-    const meta=photoMeta.length===files.length?photoMeta:await Promise.all(files.map(async file=>{const img=await createImageBitmap(file);try{return {width:img.width,height:img.height}}finally{img.close()}}));
-    checkPreflight();this.budget=planScanBudget(meta,{profile:budgetProfile,bindingLimit:adapter.limits.maxStorageBufferBindingSize});
-    this.emit('Лимит ресурсов: '+this.budget.trainMaxDim+' px · GPU targets ~'+this.budget.packedMB+' МБ · CPU frames ~'+this.budget.cpuEstimateMB+' МБ'+(this.budget.warning?' · '+this.budget.warning:''),{budget:this.budget});
-    checkPreflight();this.pending=true;this.phase='decode';this.report=null;
-    const check=()=>{if(this.controller?.signal.aborted||revision!==this.revision)throw Error('Реконструкция отменена')};
+    try{
+      const gpu=await acquireScanDevice(navigator.gpu,{
+        signal:preflightSignal,onStage:message=>{if(revision===this.revision)this.emit(message)}
+      });
+      this.device=gpu.device;checkPreflight();
+      const validMeta=photoMeta.length===files.length&&photoMeta.every(p=>Number.isFinite(p.width)&&p.width>=64&&Number.isFinite(p.height)&&p.height>=64);
+      const meta=validMeta?photoMeta:await Promise.all(files.map(async file=>{
+        checkPreflight();let img;
+        try{img=await createImageBitmap(file);return {width:img.width,height:img.height}}
+        catch(error){throw Error('Не удалось повторно прочитать размеры '+file.name+': '+error.message)}
+        finally{img?.close?.()}
+      }));
+      checkPreflight();
+      this.budget=planScanBudget(meta,{profile:budgetProfile,bindingLimit:gpu.bindingLimit});
+      this.emit('GPU '+gpu.powerPreference+' · один общий WebGPU device для SfM и тренера. Лимит ресурсов: '+this.budget.trainMaxDim+' px · GPU targets ~'+this.budget.packedMB+' МБ · CPU frames ~'+this.budget.cpuEstimateMB+' МБ'+(this.budget.warning?' · '+this.budget.warning:''),{budget:this.budget});
+      checkPreflight();
+    }catch(error){
+      const normalized=scanError(error,{phase:'preflight',signal:preflightSignal});
+      if(revision===this.revision){
+        this.phase='error';this.emit(normalized.message,{errorStage:'preflight'});
+        this.hooks.onError(normalized,this.report);
+        await this.reset(false);
+      }
+      throw normalized;
+    }
+    this.pending=true;this.phase='decode';this.report=null;
+    const check=()=>{if(this.controller?.signal.aborted||this.cancelRequested||revision!==this.revision)throw Error('Реконструкция отменена')};
     const session=createSession({
       maxIters:Math.max(1000,Math.min(100000,Math.floor(maxIters))),
       itersPerFrame:this.budget.itersPerFrame,
@@ -120,6 +143,7 @@ export class MultiViewReconstruction{
       lowMem:true,
       frames:{trainMaxDim:this.budget.trainMaxDim,featMaxDim:this.budget.featMaxDim},
       perf:false,
+      device:this.device,
     });
     this.session=session;
     this.unsub.push(session.on('stage',event=>{
@@ -144,6 +168,7 @@ export class MultiViewReconstruction{
     try{
       this.emit('Декодирование '+files.length+' фотографий…');
       await session.load(files);check();
+      if(session.frames.length<Math.max(4,Math.ceil(files.length*.5)))throw Error('Декодировано только '+session.frames.length+'/'+files.length+' кадров. Проверьте формат, повреждённые снимки и доступную память.');
       this.phase='solve';this.emit('Автоматическое сопоставление признаков и расчёт положений камер…');
       const recon=await session.solve({signal:this.controller.signal});check();
       this.report=sfmDiagnostics(recon,session.frames);
@@ -156,20 +181,21 @@ export class MultiViewReconstruction{
       this.canvas.width=initial.w;this.canvas.height=initial.h;
       session.view.attach(this.canvas);
       this.selectCamera(0);
-      this.pending=false;this.phase='ready';
-      this.hooks.onReady({registered:recon.cams.length,input:files.length,points:recon.points.length,report:this.report,cameras:session.trainer.camMeta.map((c,i)=>({index:i,imageIndex:c.imgIdx,name:session.frames[c.imgIdx]?.name||'Camera '+(i+1)}))});
       check();this.phase='training';
-      this.emit('Камеры рассчитаны. Начинаем настоящее WebGPU-обучение Gaussian Splats…');
-      session.start();
+      this.emit('Камеры рассчитаны. Начинаем WebGPU-обучение Gaussian Splats…');
+      session.start();check();this.pending=false;
+      this.hooks.onReady({registered:recon.cams.length,input:files.length,points:recon.points.length,report:this.report,cameras:session.trainer.camMeta.map((c,i)=>({index:i,imageIndex:c.imgIdx,name:session.frames[c.imgIdx]?.name||'Camera '+(i+1)}))});
       return recon;
     }catch(error){
+      const normalized=scanError(error,{phase:this.phase,signal:this.controller?.signal});
       if(revision===this.revision){
-        this.phase='error';this.emit(error?.message||String(error));
-        this.hooks.onError(error,this.report);
+        const failedPhase=this.phase;
+        this.phase='error';this.emit(normalized.message,{errorStage:failedPhase});
+        this.hooks.onError(normalized,this.report);
         this.pending=false;
         await this.reset(false);
       }
-      throw error;
+      throw normalized;
     }finally{if(revision===this.revision)this.pending=false}
   }
   pause(){
@@ -211,6 +237,8 @@ export class MultiViewReconstruction{
     this.controller?.abort();this.controller=null;
     this.session?.pause();for(const off of this.unsub)off();this.unsub=[];
     try{this.session?.dispose()}catch(e){console.warn('Splat.js disposal:',e)}
-    this.session=null;this.orbitState=null;this.report=null;this.budget=null;this.pending=false;this.phase='idle';
+    this.session=null;
+    try{this.device?.destroy?.()}catch(e){console.warn('Revolum WebGPU cleanup:',e)}
+    this.device=null;this.orbitState=null;this.report=null;this.budget=null;this.pending=false;this.phase='idle';
   }
 }

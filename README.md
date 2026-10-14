@@ -55,6 +55,12 @@ These tools **do not** test triangle self-intersections, wall thickness or metri
 
 Imported PLY point clouds (including Revolum's sparse SfM output) now display their point counts in Object Studio. Select a cloud and choose **Voxel-прореживание** to keep one original point per spatial cell. Cell size is a percentage of the cloud's **local bounding-box diagonal**; SfM has arbitrary, not metric, scale. The edited result is re-encoded as a binary PLY source, so local autosave, named projects, ZIP backups, Undo/Redo, and subsequent restores retain the reduced points. This is downsampling, not dense surface reconstruction, noise removal, or an edit to Gaussian opacity/SH data. Gaussian PLY remains a separate representation and must not be treated as editable polynomial geometry.
 
+## Troubleshooting multi-view WebGPU aborts
+
+An `AbortError` such as **The operation was aborted.** is *not* automatically a deliberate user cancellation. Revolum v0.4.4 classifies it by active stage (WebGPU preflight / image decoding / SfM / Gaussian initialization), while the user-facing Cancel action has its own neutral status. The browser WebGPU acquisition now requests **one** compatible device, without optional features, and passes that same device to the pinned Splat.js session for both SfM and training. If the high-performance adapter fails, it retries once with a low-power adapter; it does not retry a user cancellation. Aborted initialization and failed calculations dispose of the device. This removes a duplicate adapter/device startup and makes unsupported browsers or GPU/driver errors actionable. It does not guarantee that the GPU driver, permissions, image decoder or actual browser WebGPU support will work.
+
+If the error continues after refreshing the published page, note **which stage** the new message names, the browser/version, graphics adapter, whether hardware acceleration is enabled, the number/image format of your photos, and the Console error. Try the Economy profile and a small overlapping batch, and compare with an up-to-date Chromium-based browser with working WebGPU. All photos remain local. Actual cross-browser GPU smoke testing remains uncompleted.
+
 ## Experimental multi-view polygonal Mesh (browser-local)
 
 After the regular multi-view SfM step has solved the camera poses, **Построить общий Mesh** creates a depth-assisted **TSDF** mesh from the *same* registered photo set. Choose 40 / 56 / 72 volume detail and 6 / 10 / 16 maximum registered views. The implementation:
