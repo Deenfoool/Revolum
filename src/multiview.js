@@ -1,7 +1,7 @@
 // Revolum adapter for vendored Splat.js, MIT (Stratum1 GmbH).
 // Full browser-only SfM + differentiable WebGPU Gaussian splat training.
 // Local import is intentional: no remote reconstruction service or CDN at runtime.
-import {createSession,camPosition} from '../vendor/splatjs/src/index.js';
+import {createSession,camPosition} from '../vendor/splatjs/src/session.js?v=0.4.5-abortdiag';
 import {sfmDiagnostics,scanBundle} from './scan-package.js';
 import {planScanBudget} from './scan-budget.js';
 import {acquireScanDevice,scanError} from './splat-preflight.js';

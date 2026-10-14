@@ -8,6 +8,18 @@ const icons=()=>window.lucide?.createIcons();
 const uid=()=>crypto.randomUUID?.()||'p'+Date.now()+Math.random().toString(36).slice(2);
 const state={name:'Untitled scan',photos:[],selectedPhotoId:null,mode:'object',loading:false,busy:false,history:[],redo:[],transformStart:null,saveTimer:null,saveQueue:Promise.resolve(),importController:null,depthRunning:false};
 let engine;
+const APP_BUILD='0.4.5-abortdiag';
+let mvTrace={build:APP_BUILD,createdAt:new Date().toISOString(),stage:'idle',events:[],error:null};
+const logScan=(stage,message)=>{mvTrace.stage=stage;mvTrace.events.push({time:new Date().toISOString(),stage,message:String(message||'').slice(0,450)});if(mvTrace.events.length>45)mvTrace.events.shift()};
+function scanStartupError(error,stage){
+ const message=String(error?.message||error||'Unknown error'),name=String(error?.name||'Error');
+ if(name==='AbortError'||/the operation was aborted/i.test(message)){
+  const scope=stage==='module-import'?'загрузки JS-модуля SfM/3DGS':stage==='engine-import'?'загрузки интерфейса':'работы движка';
+  return 'Браузер прервал операцию на этапе '+scope+'. Откройте скачиваемую диагностику и проверьте Console / Network: '+name+': '+message;
+ }
+ return message;
+}
+function scanDiagnostic(){const e=mvTrace.error;return {...mvTrace,build:APP_BUILD,siteVersion:$('mv-runtime-version')?.textContent||'',location:location.origin+location.pathname,browser:navigator.userAgent,webgpu:!!navigator.gpu,photoCount:state.photos.length,photoTypes:[...new Set(state.photos.map(p=>p.file?.type||'unknown'))],error:e}}
 let videoController=null,cameraStream=null,multiview=null,mvPending=false,mvCancelled=false,mvExported=false,mvPackaging=false,mvJobSettled=true,denseJob=null,denseExport=null;
 function toast(message,type='info'){const item=document.createElement('div');item.className='toast '+type;item.textContent=message;$('toast-stack').appendChild(item);setTimeout(()=>item.remove(),5300)}
 const project=()=>({name:state.name,objects:engine.snapshot(),photos:state.photos.map(({url,...p})=>({...p}))});
@@ -249,6 +261,7 @@ function resetMultiviewUi(){
   $('mvs-quality').replaceChildren();$('mvs-quality').classList.add('hidden');
   $('mvs-status').textContent='Сначала завершите расчёт камер в многокадровом режиме.';
   mvExported=false;mvPackaging=false;
+  $('mv-runtime-version').textContent='Код Revolum '+APP_BUILD+' · JS загружен';
   $('mv-stats').textContent='SfM';$('mv-status').textContent='Нужен WebGPU и 8–120 перекрывающихся фотографий одной неподвижной сцены.';
   multiviewButtons();
 }
@@ -257,15 +270,19 @@ async function startMultiview(){
   const photos=state.photos.map(p=>p.file);
   if(photos.length<8||photos.length>120){toast('Для многокадрового скана требуется от 8 до 120 кадров','error');return}
   if(!navigator.gpu){$('mv-status').textContent='WebGPU не обнаружен. Включите аппаратное ускорение или откройте сайт в совместимом браузере.';toast('WebGPU недоступен: настоящий тренер Gaussian Splats не может запуститься','error');return}
+  mvTrace={build:APP_BUILD,createdAt:new Date().toISOString(),stage:'start',events:[],error:null};logScan('start','Нажата кнопка многокадровой реконструкции');
   mvPending=true;mvJobSettled=false;mvCancelled=false;mvExported=false;$('mv-cancel').disabled=false;setBusy(true);multiviewButtons();
   $('mv-progress').classList.remove('hidden');$('mv-progress').value=0;
   $('mv-status').textContent='Загрузка локального SfM/3DGS движка…';
   try{
-    const {MultiViewReconstruction}=await import('./multiview.js');
+    logScan('module-import','Запрашиваем локальные модули SfM/3DGS');
+    const {MultiViewReconstruction}=await import('./multiview.js?v=0.4.5-abortdiag');
+    logScan('module-ready','Модуль SfM/3DGS успешно загружен');
     if(mvCancelled)throw Error('Реконструкция отменена до запуска движка');
     multiview=new MultiViewReconstruction({
       canvas:$('mv-canvas'),
       onUpdate:e=>{
+        logScan(e.stage||e.phase||'engine',e.message);
         $('mv-status').textContent=e.message;
         if(e.budget){$('mv-budget').classList.remove('hidden');$('mv-budget').textContent='Ресурсы: '+e.budget.profileLabel+' · '+e.budget.trainMaxDim+' px · '+e.budget.frames+' рабочих кадров · GPU targets ≈'+e.budget.packedMB+' МБ (лимит '+e.budget.bindingLimitMB+' МБ) · CPU frames ≈'+e.budget.cpuEstimateMB+' МБ. '+(e.budget.warning||'Общий расход GPU/CPU памяти будет выше этих оценок.');}
         if(e.stage&&e.total>0)$('mv-progress').value=Math.round(e.done/e.total*100);
@@ -284,15 +301,19 @@ async function startMultiview(){
         toast('Камеры рассчитаны, 3DGS-тренер запущен.','success');
       },
       onComplete:e=>{multiviewButtons();$('mv-progress').value=100;toast('Обучение Gaussian Splats завершено. Можно экспортировать PLY.','success')},
-      onError:(e,report)=>{renderMultiviewReport(report);$('mv-status').textContent='Ошибка многокадровой реконструкции: '+(e?.message||e);if(mvJobSettled){toast('Многокадровая реконструкция: '+(e?.message||e),'error');multiviewButtons()}}
+      onError:(e,report)=>{mvTrace.error={stage:mvTrace.stage,name:e?.name||'Error',message:String(e?.message||e),stack:String(e?.stack||'').slice(0,3500)};renderMultiviewReport(report);$('mv-status').textContent='Ошибка многокадровой реконструкции: '+(e?.message||e);if(mvJobSettled){toast('Многокадровая реконструкция: '+(e?.message||e),'error');multiviewButtons()}}
     });
     const preset=Number($('mv-preset').value);
     await multiview.run(photos,{maxIters:preset,budgetProfile:$('mv-memory-profile').value,photoMeta:state.photos.map(p=>({width:p.width,height:p.height}))});
     mvJobSettled=true;
   }catch(error){
+    const stage=mvTrace.stage;
     const cancelled=mvCancelled||error?.message==='Расчёт отменён пользователем.'||error?.message==='Реконструкция отменена';
+    const detailed=scanStartupError(error,stage);
+    mvTrace.error={stage,name:String(error?.name||'Error'),message:String(error?.message||error),displayMessage:detailed,stack:String(error?.stack||'').slice(0,3500)};
+    logScan(cancelled?'cancelled':'failed',detailed);
     if(cancelled){$('mv-status').textContent='Расчёт отменён. Можно начать новый скан.';toast('Многокадровая реконструкция отменена.');}
-    else{$('mv-status').textContent=error?.message||String(error);toast('SfM / Gaussian Splatting: '+(error?.message||error),'error');console.error('[Revolum multiview]',error);}
+    else{$('mv-status').textContent='Revolum '+APP_BUILD+' · '+detailed;toast('Ошибка SfM/3DGS: '+detailed,'error');console.error('[Revolum multiview '+APP_BUILD+']',stage,error);}
   }finally{mvJobSettled=true;mvPending=false;mvCancelled=false;setBusy(false);multiviewButtons()}
 }
 async function newMultiview(){
@@ -570,6 +591,7 @@ function bind(){
   $('library-save-btn').onclick=saveLibraryCopy;
   $('reconstruct-selected').onclick=reconstructSelectedPhoto;
   $('mv-start').onclick=startMultiview;
+  $('mv-download-diagnostic').onclick=()=>download(new Blob([JSON.stringify(scanDiagnostic(),null,2)],{type:'application/json'}),'revolum-sfm-diagnostic-'+APP_BUILD+'.json');
   $('mvs-start').onclick=startDenseMesh;
   $('mvs-cancel').onclick=cancelDenseMesh;
   $('mvs-download-glb').onclick=()=>{if(denseExport)download(denseExport.glb,denseExport.name+'-dense.glb')};

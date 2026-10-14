@@ -147,3 +147,8 @@
 .mesh-audit-result{margin-top:12px;padding:11px;border:1px solid #48617b;border-radius:7px;background:#1b2a3c;color:#bbcee4;font-size:10px;line-height:1.7;overflow-wrap:anywhere}
 .mesh-audit-result strong{display:block;color:#e1ebf8;margin-bottom:6px}
 .mesh-audit-result p{margin:6px 0 0}
+
+/* SfM startup diagnostics: visible build proof and local-only JSON report. */
+.mv-runtime-info{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:12px 0 8px;font-size:10px;color:#9eb5c8}
+.mv-runtime-info .btn{font-size:10px;padding:7px 10px;gap:6px}
+#mv-runtime-version{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}

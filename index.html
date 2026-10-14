@@ -12,7 +12,7 @@
   <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script type="module" src="./src/main.js"></script>
+  <script type="module" src="./src/main.js?v=0.4.5-abortdiag"></script>
 </head>
 <body>
 <div id="app">
@@ -48,7 +48,7 @@
         <button id="import-model-btn" class="btn btn-outline btn-full"><i data-lucide="package-plus"></i> Импорт модели</button>
         <button id="import-model-folder-btn" class="btn btn-outline btn-full"><i data-lucide="folder-input"></i> Импорт папки модели</button>\n        <button id="import-photos-btn" class="btn btn-outline btn-full hidden"><i data-lucide="images"></i> Добавить фотографии</button>
         <div class="storage-note"><i data-lucide="hard-drive"></i><span>Файлы остаются на устройстве. Экспортируйте ZIP для резервной копии.</span></div>
-        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.4.4</span></div>
+        <div class="sidebar-links"><a href="https://github.com/Deenfoool/Revolum" target="_blank" rel="noopener noreferrer"><i data-lucide="github"></i> SOURCE</a><span>v0.4.5</span></div>
       </div>
     </aside>
     <main class="main-area">
@@ -86,6 +86,7 @@
               <button class="btn btn-outline hidden" id="mv-resume"><i data-lucide="play"></i> Продолжить</button>
               <button class="btn btn-outline hidden" id="mv-finish"><i data-lucide="check"></i> Завершить</button>
             </div>
+            <div class="mv-runtime-info"><span id="mv-runtime-version">Ожидание запуска JS…</span><button type="button" id="mv-download-diagnostic" class="btn btn-outline"><i data-lucide="file-down"></i> Скачать диагностику (.json)</button></div>
             <div class="mv-status" aria-live="polite"><div id="mv-status">Нужен WebGPU и перекрывающиеся фотографии одной неподвижной сцены.</div><progress id="mv-progress" max="100" value="0" class="hidden" aria-label="Прогресс многокадровой реконструкции"></progress></div>
             <div id="mv-budget" class="mv-budget hidden" role="status"></div>
             <div id="mv-diagnostics" class="mv-diagnostics hidden" aria-live="polite"></div>
